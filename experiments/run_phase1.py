@@ -118,6 +118,12 @@ def cmd_cache(args):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger.info("=== Phase 1 — Cache embeddings [%s] ===", args.split)
 
+    # Force offline mode if requested
+    if getattr(args, "offline", False):
+        os.environ["HF_DATASETS_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        logger.info("Offline mode enabled")
+
     # Resolve HF token: CLI arg > env var > .env file
     hf_token = getattr(args, "hf_token", None) or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     if not hf_token:
@@ -126,7 +132,7 @@ def cmd_cache(args):
             for line in open(env_file):
                 if line.startswith("HUGGING_FACE_HUB_TOKEN="):
                     hf_token = line.strip().split("=", 1)[1]
-    if hf_token:
+    if hf_token and not os.environ.get("HF_DATASETS_OFFLINE"):
         os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
         logger.info("HuggingFace token loaded")
 
@@ -134,13 +140,17 @@ def cmd_cache(args):
     # Normalise split name ("validation" → "val" for parquet files from lmms-lab)
     split_for_parquet = "val" if args.split in ("val", "validation") else args.split
 
+    sample_offset = getattr(args, "sample_offset", 0)
+    num_samples   = getattr(args, "num_samples", None)
+
     parquet_dir = getattr(args, "parquet_dir", None)
     if parquet_dir:
         dataset = MPDocVQADataset.from_parquet_dir(
             parquet_dir=parquet_dir,
             split_prefix=split_for_parquet,
             max_pages_per_doc=args.max_pages,
-            num_samples=getattr(args, "num_samples", None),
+            num_samples=num_samples,
+            sample_offset=sample_offset,
         )
     else:
         dataset = MPDocVQADataset(
@@ -150,7 +160,8 @@ def cmd_cache(args):
             max_pages_per_doc=args.max_pages,
             hf_token=hf_token,
             streaming=getattr(args, "streaming", False),
-            num_samples=getattr(args, "num_samples", None),
+            num_samples=num_samples,
+            sample_offset=sample_offset,
         )
     dataset.print_stats()
 
@@ -513,10 +524,16 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Use HF streaming mode (no full download)")
     p_cache.add_argument("--num_samples", type=int, default=None,
                          help="Limit number of samples to process")
+    p_cache.add_argument("--sample_offset", type=int, default=0,
+                         help="Skip first N samples (use with --num_samples for non-overlapping splits). "
+                              "E.g. train: --num_samples 800, val: --sample_offset 800 --num_samples 200")
     p_cache.add_argument("--parquet_dir", default=None,
                          help="Load directly from local parquet files (e.g. HF hub cache). "
                               "Example: ~/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/"
                               "snapshots/<hash>/data/")
+    p_cache.add_argument("--offline", action="store_true",
+                         help="Force offline mode (HF_DATASETS_OFFLINE=1 + TRANSFORMERS_OFFLINE=1). "
+                              "Use when network is unavailable and data is already cached.")
 
     # -- train --
     p_train = sub.add_parser("train", help="Train GAT reranker on cached data")

@@ -17,6 +17,40 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Padding utility (sequence length may vary across batches)
+# ---------------------------------------------------------------------------
+
+
+def _pad_to_max_seq_len(embs_list: List[torch.Tensor]) -> torch.Tensor:
+    """
+    Pad a list of (B, T, D) tensors to the same T then concatenate on dim=0.
+
+    Some ColVision processors can yield variable sequence lengths depending on
+    dynamic padding/resizing. This makes `torch.cat` fail across batches.
+    We pad with zeros along the token dimension.
+    """
+    if not embs_list:
+        return torch.empty(0, 0, 0)
+
+    max_t = max(t.shape[1] for t in embs_list)
+    d = embs_list[0].shape[2]
+    padded: List[torch.Tensor] = []
+    for t in embs_list:
+        if t.shape[2] != d:
+            raise ValueError(f"Embedding dim mismatch: expected {d}, got {t.shape[2]}")
+        if t.shape[1] == max_t:
+            padded.append(t)
+            continue
+        if t.shape[1] > max_t:
+            padded.append(t[:, :max_t, :])
+            continue
+        pad_len = max_t - t.shape[1]
+        pad = torch.zeros(t.shape[0], pad_len, d, dtype=t.dtype, device=t.device)
+        padded.append(torch.cat([t, pad], dim=1))
+
+    return torch.cat(padded, dim=0)
+
+# ---------------------------------------------------------------------------
 # Supported model registry
 # ---------------------------------------------------------------------------
 
@@ -187,7 +221,7 @@ class ColVisionInferencer:
             embs = self.model(**batch).to(dtype=torch.float32).cpu()  # (B, T, D)
             all_embs.append(embs)
 
-        return torch.cat(all_embs, dim=0)  # (N, T, D)
+        return _pad_to_max_seq_len(all_embs)  # (N, T, D)
 
     @torch.no_grad()
     def encode_queries(
@@ -208,7 +242,7 @@ class ColVisionInferencer:
             embs = self.model(**batch).to(dtype=torch.float32).cpu()  # (B, T, D)
             all_embs.append(embs)
 
-        return torch.cat(all_embs, dim=0)  # (Q, T, D)
+        return _pad_to_max_seq_len(all_embs)  # (Q, T, D)
 
     # ------------------------------------------------------------------
     # Scoring & retrieval

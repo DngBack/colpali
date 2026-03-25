@@ -77,6 +77,7 @@ class MPDocVQADataset(Dataset):
         hf_token: Optional[str] = None,
         streaming: bool = False,
         num_samples: Optional[int] = None,
+        sample_offset: int = 0,
     ):
         self.split = split
         self.max_pages_per_doc = max_pages_per_doc
@@ -91,6 +92,7 @@ class MPDocVQADataset(Dataset):
                 hf_token,
                 streaming=streaming,
                 num_samples=num_samples,
+                sample_offset=sample_offset,
             )
 
         logger.info(
@@ -111,6 +113,7 @@ class MPDocVQADataset(Dataset):
         hf_token: Optional[str] = None,
         streaming: bool = False,
         num_samples: Optional[int] = None,
+        sample_offset: int = 0,
     ) -> List[MPDocVQASample]:
         try:
             from datasets import load_dataset
@@ -128,6 +131,18 @@ class MPDocVQADataset(Dataset):
                 f" — first {num_samples} samples" if num_samples else "",
             )
 
+        # Auto-enable offline mode when network is unreachable
+        import os as _os
+        if not _os.environ.get("HF_DATASETS_OFFLINE"):
+            try:
+                import socket
+                socket.setdefaulttimeout(3)
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
+            except OSError:
+                logger.warning("Network unreachable — enabling HF_DATASETS_OFFLINE=1")
+                _os.environ["HF_DATASETS_OFFLINE"] = "1"
+                kwargs.pop("token", None)  # token not needed offline
+
         try:
             raw = load_dataset(hf_id, split=split, **kwargs)
         except Exception as e:
@@ -137,29 +152,38 @@ class MPDocVQADataset(Dataset):
                     f"\n\nDataset '{hf_id}' requires authentication or does not exist.\n"
                     "Options:\n"
                     "  1) Pass --hf_token YOUR_TOKEN  (get at https://huggingface.co/settings/tokens)\n"
-                    "  2) Pass --hf_dataset_id <other-dataset-id>  (default: lmms-lab/MP-DocVQA)\n"
-                    "  3) Use local data:  --local_json_path <path.json>\n"
-                    "     See: https://rrc.cvc.uab.es/?ch=17 for official MP-DocVQA download\n"
-                    "  4) Generate mock data for pipeline testing:  cache --mock\n"
+                    "  2) Use local parquet:  --parquet_dir ~/.cache/huggingface/hub/datasets--lmms-lab"
+                    "--MP-DocVQA/snapshots/<hash>/data/\n"
                 ) from e
-            # Try alternate split names (lmms-lab uses "test" for what others call "validation")
-            for alt in ("test", "val", "train"):
-                if alt != split:
-                    try:
-                        logger.warning("Split '%s' not found, retrying with '%s'", split, alt)
-                        raw = load_dataset(hf_id, split=alt, **kwargs)
-                        break
-                    except Exception:
-                        continue
+            # Split not found → try what's available in cache
+            for alt in ("test", "val", "validation", "train"):
+                if alt == split:
+                    continue
+                try:
+                    logger.warning(
+                        "Split '%s' not found locally, trying '%s' as substitute", split, alt
+                    )
+                    raw = load_dataset(hf_id, split=alt, **kwargs)
+                    logger.info("Loaded '%s' split as substitute for '%s'", alt, split)
+                    break
+                except Exception:
+                    continue
             else:
                 raise
 
-        # Limit sample count for streaming or quick tests
-        if num_samples is not None:
-            if streaming:
+        # Apply offset + limit (for non-overlapping train/val splits)
+        if streaming:
+            if sample_offset > 0:
+                raw = raw.skip(sample_offset)
+            if num_samples is not None:
                 raw = raw.take(num_samples)
-            else:
-                raw = raw.select(range(min(num_samples, len(raw))))
+        else:
+            total = len(raw)
+            start = sample_offset
+            end = min(start + num_samples, total) if num_samples is not None else total
+            if start > 0 or end < total:
+                raw = raw.select(range(start, end))
+                logger.info("Selected rows %d–%d of %d total", start, end - 1, total)
 
         samples = []
         for row in raw:
@@ -183,7 +207,7 @@ class MPDocVQADataset(Dataset):
                 import json
                 answers = json.loads(answers)
             except Exception:
-                answers = [answers]
+                answers = [answers] if answers not in ("[]", "") else []
         if not isinstance(answers, list):
             answers = [str(answers)]
 
@@ -227,7 +251,17 @@ class MPDocVQADataset(Dataset):
         n = len(images)
 
         # --- answer page index ---
-        raw_idx = row.get("answer_page_idx") or row.get("page_idx") or row.get("answer_page") or 0
+        raw_idx = row.get("answer_page_idx") or row.get("page_idx") or row.get("answer_page")
+        # Handle '[]' (unlabeled competition test set) → skip row
+        if raw_idx in (None, "", "[]", [], "null"):
+            raise ValueError("Row has no answer_page_idx — likely unlabeled test split, skipping")
+        if isinstance(raw_idx, str):
+            try:
+                import json
+                parsed = json.loads(raw_idx)
+                raw_idx = parsed[0] if isinstance(parsed, list) and parsed else 0
+            except Exception:
+                raw_idx = 0
         answer_page_idx = min(int(raw_idx), max(n - 1, 0))
 
         # --- support pages ---
@@ -273,6 +307,7 @@ class MPDocVQADataset(Dataset):
         split_prefix: str = "val",
         max_pages_per_doc: int = 60,
         num_samples: Optional[int] = None,
+        sample_offset: int = 0,
     ) -> "MPDocVQADataset":
         """
         Load directly from local .parquet files (e.g. from HF hub cache).
@@ -281,12 +316,15 @@ class MPDocVQADataset(Dataset):
             parquet_dir:    Directory containing *.parquet files.
             split_prefix:   File prefix to match (e.g. "val", "train").
             max_pages_per_doc: Max pages to load per document.
-            num_samples:    Limit to first N samples (None = all).
+            num_samples:    Maximum number of samples to load (None = all).
+            sample_offset:  Skip the first N rows (use with num_samples to create
+                            non-overlapping train/val splits from the same file).
+                            E.g. train: offset=0, n=800 → val: offset=800, n=200
 
         Example:
-            DATA = "~/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/
-                    snapshots/<hash>/data/"
-            ds = MPDocVQADataset.from_parquet_dir(DATA, split_prefix="val")
+            DATA = "~/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/snapshots/<hash>/data/"
+            train_ds = MPDocVQADataset.from_parquet_dir(DATA, num_samples=800)
+            val_ds   = MPDocVQADataset.from_parquet_dir(DATA, sample_offset=800, num_samples=200)
         """
         try:
             from datasets import load_dataset
@@ -304,8 +342,12 @@ class MPDocVQADataset(Dataset):
         logger.info("Loading %d parquet files from %s", len(files), parquet_dir)
 
         raw = load_dataset("parquet", data_files={split_prefix: files}, split=split_prefix)
-        if num_samples is not None:
-            raw = raw.select(range(min(num_samples, len(raw))))
+        total = len(raw)
+        start = sample_offset
+        end = min(start + num_samples, total) if num_samples is not None else total
+        if start > 0 or end < total:
+            raw = raw.select(range(start, end))
+            logger.info("Selected rows %d–%d of %d total", start, end - 1, total)
 
         obj = cls.__new__(cls)
         obj.split = split_prefix
