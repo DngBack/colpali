@@ -47,7 +47,8 @@ python -m experiments.run_phase1 cache \
   --num_samples 200 --sample_offset 0
 ```
 
-### Val cache split
+### Val cache split (row offset only — can still share `doc_id` with train)
+
 ```bash
 rm -rf cache/real_val_split
 
@@ -60,19 +61,38 @@ python -m experiments.run_phase1 cache \
   --num_samples 100 --sample_offset 200
 ```
 
+### Val cache split (**document-disjoint** from train — recommended for GAT validation)
+
+Rows whose `doc_id` appears in `cache/real_train_split/meta.json` are **removed before encoding** (saves GPU). Use a **wider** `--num_samples` window so enough questions remain after filtering.
+
+```bash
+rm -rf cache/real_val_doc_disjoint
+
+python -m experiments.run_phase1 cache \
+  --split val --offline \
+  --parquet_dir "$PARQUET_DIR" \
+  --model_name vidore/colSmol-256M --model_type colidefics3 \
+  --output_dir cache/real_val_doc_disjoint \
+  --top_k 10 --batch_size 4 \
+  --num_samples 600 --sample_offset 200 \
+  --exclude_train_doc_ids_cache cache/real_train_split
+```
+
 ## Training
 Command:
 ```bash
 python -m experiments.run_phase1 train \
   --train_cache cache/real_train_split \
-  --val_cache   cache/real_val_split \
+  --val_cache   cache/real_val_doc_disjoint \
   --output_dir  checkpoints/gat_real_split \
   --num_epochs 10 --batch_size 16 --lr 5e-4
 ```
 
-Observed dataset sizes (from logs):
+Observed dataset sizes (from logs — **row-split** val, not document-disjoint):
 - `cache/real_train_split`: **190 samples**
 - `cache/real_val_split`: **78 samples**
+
+When using `cache/real_val_doc_disjoint`, check the log `Doc-disjoint filter: kept X/Y samples` for the final val size.
 
 Training outcome:
 - Early stopping at **epoch 8**
@@ -81,12 +101,21 @@ Training outcome:
   - `Best Recall@5 = 0.9359`
 
 ## Evaluation Results
-Command:
+
+Row-split val (historical run):
 ```bash
 python -m experiments.run_phase1 eval \
   --eval_cache cache/real_val_split \
   --checkpoint checkpoints/gat_real_split/best.pt \
   --output_dir results/phase1_real_split
+```
+
+Document-disjoint val:
+```bash
+python -m experiments.run_phase1 eval \
+  --eval_cache cache/real_val_doc_disjoint \
+  --checkpoint checkpoints/gat_real_split/best.pt \
+  --output_dir results/phase1_doc_disjoint_val
 ```
 
 ### Main Retrieval Metrics (MP-DocVQA)
@@ -119,14 +148,14 @@ Results:
 - `question_id overlap count = 0` (no question is shared between train and val)
 - `doc_id overlap count = 3` (same documents may appear across splits, but with different questions)
 
-This suggests no direct query leakage, but for a stricter “no document overlap” test, we still want a filtered test set.
+This suggests no direct question leakage, but **documents can still overlap** across row splits. Use `--exclude_train_doc_ids_cache` (val) or `filter_rerank_cache.py` (test) for document-level splits.
 
 ## Building a Strict Test Set (No Document Overlap)
 ### Approach
 1. Build a larger **candidate test pool** from the labeled parquet split (again typically `--split val` in offline mode).
 2. Filter the candidate pool using `doc_id` so that the final test cache contains documents not present in:
    - `cache/real_train_split`
-   - `cache/real_val_split`
+   - `cache/real_val_doc_disjoint` (or your val cache directory)
 3. Run `eval` with the filtered test cache.
 
 ### New helper script
@@ -156,7 +185,7 @@ python -m experiments.run_phase1 cache \
 python -m experiments.train.filter_rerank_cache \
   --candidate_cache cache/real_test_pool \
   --exclude_cache cache/real_train_split \
-  --exclude_cache cache/real_val_split \
+  --exclude_cache cache/real_val_doc_disjoint \
   --output_dir cache/real_test_split_no_doc_overlap
 
 # 3) Evaluate on the strict test cache

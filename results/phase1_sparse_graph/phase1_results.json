@@ -1,0 +1,1714 @@
+{
+  "retrieval": {
+    "ColPali (stage-1)": {
+      "Recall@1": 0.3870967741935484,
+      "Recall_all@1": 0.3870967741935484,
+      "P@1": 0.3870967741935484,
+      "MAP@1": 0.3870967741935484,
+      "Recall@5": 0.9032258064516129,
+      "Recall_all@5": 0.9032258064516129,
+      "P@5": 0.18064516129032265,
+      "MAP@5": 0.5817204301075269,
+      "Recall@10": 1.0,
+      "Recall_all@10": 1.0,
+      "P@10": 0.10000000000000005,
+      "MAP@10": 0.5921146953405018,
+      "MRR@10": 0.5921146953405018,
+      "nDCG@10": 0.6908771655540056
+    },
+    "ColPali + MLP reranker": {
+      "Recall@1": 0.2903225806451613,
+      "Recall_all@1": 0.2903225806451613,
+      "P@1": 0.2903225806451613,
+      "MAP@1": 0.2903225806451613,
+      "Recall@5": 0.9032258064516129,
+      "Recall_all@5": 0.9032258064516129,
+      "P@5": 0.18064516129032265,
+      "MAP@5": 0.5537634408602151,
+      "Recall@10": 1.0,
+      "Recall_all@10": 1.0,
+      "P@10": 0.10000000000000005,
+      "MAP@10": 0.5634408602150537,
+      "MRR@10": 0.5634408602150538,
+      "nDCG@10": 0.6707092744411675
+    },
+    "X-PageRerank (ablation: no graph)": {
+      "Recall@1": 0.3870967741935484,
+      "Recall_all@1": 0.3870967741935484,
+      "P@1": 0.3870967741935484,
+      "MAP@1": 0.3870967741935484,
+      "Recall@5": 0.967741935483871,
+      "Recall_all@5": 0.967741935483871,
+      "P@5": 0.19354838709677427,
+      "MAP@5": 0.6016129032258064,
+      "Recall@10": 1.0,
+      "Recall_all@10": 1.0,
+      "P@10": 0.10000000000000005,
+      "MAP@10": 0.6051971326164876,
+      "MRR@10": 0.6051971326164876,
+      "nDCG@10": 0.702437304163603
+    },
+    "X-PageRerank (GAT)": {
+      "Recall@1": 0.3870967741935484,
+      "Recall_all@1": 0.3870967741935484,
+      "P@1": 0.3870967741935484,
+      "MAP@1": 0.3870967741935484,
+      "Recall@5": 0.967741935483871,
+      "Recall_all@5": 0.967741935483871,
+      "P@5": 0.19354838709677427,
+      "MAP@5": 0.6000000000000001,
+      "Recall@10": 1.0,
+      "Recall_all@10": 1.0,
+      "P@10": 0.10000000000000005,
+      "MAP@10": 0.603584229390681,
+      "MRR@10": 0.603584229390681,
+      "nDCG@10": 0.7010236347817046
+    }
+  },
+  "support_pages": {
+    "ColPali (stage-1)": {
+      "Coverage@1": 0.3870967741935484,
+      "AllSupportHit@1": 0.0,
+      "SupportF1@1": 0.3870967741935484,
+      "SupportP@1": 0.3870967741935484,
+      "SupportR@1": 0.3870967741935484,
+      "Coverage@5": 0.9032258064516129,
+      "AllSupportHit@5": 0.0,
+      "SupportF1@5": 0.5311827956989248,
+      "SupportP@5": 0.4241935483870967,
+      "SupportR@5": 0.9032258064516129,
+      "Coverage@10": 1.0,
+      "AllSupportHit@10": 0.0,
+      "SupportF1@10": 0.5441698086859377,
+      "SupportP@10": 0.43064516129032243,
+      "SupportR@10": 1.0
+    },
+    "ColPali + MLP reranker": {
+      "Coverage@1": 0.2903225806451613,
+      "AllSupportHit@1": 0.0,
+      "SupportF1@1": 0.2903225806451613,
+      "SupportP@1": 0.2903225806451613,
+      "SupportR@1": 0.2903225806451613,
+      "Coverage@5": 0.9032258064516129,
+      "AllSupportHit@5": 0.0,
+      "SupportF1@5": 0.5311827956989248,
+      "SupportP@5": 0.4241935483870967,
+      "SupportR@5": 0.9032258064516129,
+      "Coverage@10": 1.0,
+      "AllSupportHit@10": 0.0,
+      "SupportF1@10": 0.5441698086859377,
+      "SupportP@10": 0.43064516129032243,
+      "SupportR@10": 1.0
+    },
+    "X-PageRerank (ablation: no graph)": {
+      "Coverage@1": 0.3870967741935484,
+      "AllSupportHit@1": 0.0,
+      "SupportF1@1": 0.3870967741935484,
+      "SupportP@1": 0.3870967741935484,
+      "SupportR@1": 0.3870967741935484,
+      "Coverage@5": 0.967741935483871,
+      "AllSupportHit@5": 0.0,
+      "SupportF1@5": 0.5526881720430107,
+      "SupportP@5": 0.4370967741935483,
+      "SupportR@5": 0.967741935483871,
+      "Coverage@10": 1.0,
+      "AllSupportHit@10": 0.0,
+      "SupportF1@10": 0.5441698086859377,
+      "SupportP@10": 0.43064516129032243,
+      "SupportR@10": 1.0
+    },
+    "X-PageRerank (GAT)": {
+      "Coverage@1": 0.3870967741935484,
+      "AllSupportHit@1": 0.0,
+      "SupportF1@1": 0.3870967741935484,
+      "SupportP@1": 0.3870967741935484,
+      "SupportR@1": 0.3870967741935484,
+      "Coverage@5": 0.967741935483871,
+      "AllSupportHit@5": 0.0,
+      "SupportF1@5": 0.5526881720430107,
+      "SupportP@5": 0.4370967741935483,
+      "SupportR@5": 0.967741935483871,
+      "Coverage@10": 1.0,
+      "AllSupportHit@10": 0.0,
+      "SupportF1@10": 0.5441698086859377,
+      "SupportP@10": 0.43064516129032243,
+      "SupportR@10": 1.0
+    }
+  },
+  "analysis": {
+    "per_query": {
+      "ColPali (stage-1)": [
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "362",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "363",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "364",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "365",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "8560",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "4958",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "8565",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "4959",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "375",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "376",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "377",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 10,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1,
+          "nDCG@10": 0.2890648263178879,
+          "question_id": "49530",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24499",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 9,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1111111111111111,
+          "nDCG@10": 0.3010299956639812,
+          "question_id": "49534",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "383",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "384",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "385",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24500",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33153",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "57733",
+          "doc_id": "ynbx0223"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 9,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1111111111111111,
+          "nDCG@10": 0.3010299956639812,
+          "question_id": "49542",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33158",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "407",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 5,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.2,
+          "nDCG@10": 0.38685280723454163,
+          "question_id": "408",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "409",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24505",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "410",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "16801",
+          "doc_id": "khbw0217"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "49569",
+          "doc_id": "fygb0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "58700",
+          "doc_id": "fgbd0079"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "49574",
+          "doc_id": "fygb0228"
+        }
+      ],
+      "ColPali + MLP reranker": [
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "362",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "363",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "364",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "365",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "8560",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "4958",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "8565",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "4959",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "375",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "376",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "377",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 10,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1,
+          "nDCG@10": 0.2890648263178879,
+          "question_id": "49530",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24499",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 10,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1,
+          "nDCG@10": 0.2890648263178879,
+          "question_id": "49534",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "383",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "384",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "385",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24500",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33153",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "57733",
+          "doc_id": "ynbx0223"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 10,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1,
+          "nDCG@10": 0.2890648263178879,
+          "question_id": "49542",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33158",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "407",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "408",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "409",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24505",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "410",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "16801",
+          "doc_id": "khbw0217"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "49569",
+          "doc_id": "fygb0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "58700",
+          "doc_id": "fgbd0079"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "49574",
+          "doc_id": "fygb0228"
+        }
+      ],
+      "X-PageRerank (ablation: no graph)": [
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "362",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "363",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "364",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "365",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "8560",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "4958",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "8565",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "4959",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "375",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "376",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "377",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 5,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.2,
+          "nDCG@10": 0.38685280723454163,
+          "question_id": "49530",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24499",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "49534",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "383",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "384",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "385",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24500",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33153",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "57733",
+          "doc_id": "ynbx0223"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 9,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1111111111111111,
+          "nDCG@10": 0.3010299956639812,
+          "question_id": "49542",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33158",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "407",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 5,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.2,
+          "nDCG@10": 0.38685280723454163,
+          "question_id": "408",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "409",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24505",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "410",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "16801",
+          "doc_id": "khbw0217"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "49569",
+          "doc_id": "fygb0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "58700",
+          "doc_id": "fgbd0079"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "49574",
+          "doc_id": "fygb0228"
+        }
+      ],
+      "X-PageRerank (GAT)": [
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "362",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "363",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "364",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "365",
+          "doc_id": "sncj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "8560",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "4958",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "8565",
+          "doc_id": "nnhk0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "4959",
+          "doc_id": "hljn0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "375",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "376",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "377",
+          "doc_id": "hjxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 5,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.2,
+          "nDCG@10": 0.38685280723454163,
+          "question_id": "49530",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24499",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 5,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.2,
+          "nDCG@10": 0.38685280723454163,
+          "question_id": "49534",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "383",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "384",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "385",
+          "doc_id": "phxj0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24500",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33153",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "57733",
+          "doc_id": "ynbx0223"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 9,
+          "Recall@1": 0,
+          "Recall@5": 0,
+          "MRR@10": 0.1111111111111111,
+          "nDCG@10": 0.3010299956639812,
+          "question_id": "49542",
+          "doc_id": "mybv0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "33158",
+          "doc_id": "thvd0227"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "407",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 5,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.2,
+          "nDCG@10": 0.38685280723454163,
+          "question_id": "408",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 3,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.3333333333333333,
+          "nDCG@10": 0.5,
+          "question_id": "409",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "24505",
+          "doc_id": "hpbl0226"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 4,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.25,
+          "nDCG@10": 0.43067655807339306,
+          "question_id": "410",
+          "doc_id": "hjbl0037"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 2,
+          "Recall@1": 0,
+          "Recall@5": 1,
+          "MRR@10": 0.5,
+          "nDCG@10": 0.6309297535714575,
+          "question_id": "16801",
+          "doc_id": "khbw0217"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "49569",
+          "doc_id": "fygb0228"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "58700",
+          "doc_id": "fgbd0079"
+        },
+        {
+          "num_support_pages": 1,
+          "rank_first_hit_top10": 1,
+          "Recall@1": 1,
+          "Recall@5": 1,
+          "MRR@10": 1.0,
+          "nDCG@10": 1.0,
+          "question_id": "49574",
+          "doc_id": "fygb0228"
+        }
+      ]
+    },
+    "by_support_count": {
+      "ColPali (stage-1)": {
+        "1": {
+          "n_queries": 31,
+          "Recall@1": 0.3870967741935484,
+          "Recall@5": 0.9032258064516129,
+          "MRR@10": 0.5921146953405018,
+          "nDCG@10": 0.6908771655540055
+        }
+      },
+      "ColPali + MLP reranker": {
+        "1": {
+          "n_queries": 31,
+          "Recall@1": 0.2903225806451613,
+          "Recall@5": 0.9032258064516129,
+          "MRR@10": 0.5634408602150537,
+          "nDCG@10": 0.6707092744411672
+        }
+      },
+      "X-PageRerank (ablation: no graph)": {
+        "1": {
+          "n_queries": 31,
+          "Recall@1": 0.3870967741935484,
+          "Recall@5": 0.967741935483871,
+          "MRR@10": 0.6051971326164876,
+          "nDCG@10": 0.7024373041636028
+        }
+      },
+      "X-PageRerank (GAT)": {
+        "1": {
+          "n_queries": 31,
+          "Recall@1": 0.3870967741935484,
+          "Recall@5": 0.967741935483871,
+          "MRR@10": 0.603584229390681,
+          "nDCG@10": 0.7010236347817045
+        }
+      }
+    },
+    "pairwise_no_graph_vs_gat": {
+      "n_queries": 31,
+      "n_no_graph_better_recall1": 0,
+      "n_equal_recall1": 31,
+      "per_query": [
+        {
+          "question_id": "362",
+          "doc_id": "sncj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 3,
+          "NoGraph first_hit_rank_top10": 3
+        },
+        {
+          "question_id": "363",
+          "doc_id": "sncj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 4,
+          "NoGraph first_hit_rank_top10": 4
+        },
+        {
+          "question_id": "364",
+          "doc_id": "sncj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "365",
+          "doc_id": "sncj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 4,
+          "NoGraph first_hit_rank_top10": 4
+        },
+        {
+          "question_id": "8560",
+          "doc_id": "nnhk0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "4958",
+          "doc_id": "hljn0226",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "8565",
+          "doc_id": "nnhk0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "4959",
+          "doc_id": "hljn0226",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "375",
+          "doc_id": "hjxj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "376",
+          "doc_id": "hjxj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "377",
+          "doc_id": "hjxj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "49530",
+          "doc_id": "mybv0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 5,
+          "NoGraph first_hit_rank_top10": 5
+        },
+        {
+          "question_id": "24499",
+          "doc_id": "hpbl0226",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "49534",
+          "doc_id": "mybv0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 5,
+          "NoGraph first_hit_rank_top10": 4
+        },
+        {
+          "question_id": "383",
+          "doc_id": "phxj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "384",
+          "doc_id": "phxj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "385",
+          "doc_id": "phxj0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "24500",
+          "doc_id": "hpbl0226",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "33153",
+          "doc_id": "thvd0227",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "57733",
+          "doc_id": "ynbx0223",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 4,
+          "NoGraph first_hit_rank_top10": 4
+        },
+        {
+          "question_id": "49542",
+          "doc_id": "mybv0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 9,
+          "NoGraph first_hit_rank_top10": 9
+        },
+        {
+          "question_id": "33158",
+          "doc_id": "thvd0227",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "407",
+          "doc_id": "hjbl0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 3,
+          "NoGraph first_hit_rank_top10": 3
+        },
+        {
+          "question_id": "408",
+          "doc_id": "hjbl0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 5,
+          "NoGraph first_hit_rank_top10": 5
+        },
+        {
+          "question_id": "409",
+          "doc_id": "hjbl0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 3,
+          "NoGraph first_hit_rank_top10": 3
+        },
+        {
+          "question_id": "24505",
+          "doc_id": "hpbl0226",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "410",
+          "doc_id": "hjbl0037",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 4,
+          "NoGraph first_hit_rank_top10": 4
+        },
+        {
+          "question_id": "16801",
+          "doc_id": "khbw0217",
+          "num_support_pages": 1,
+          "GAT Recall@1": 0,
+          "NoGraph Recall@1": 0,
+          "GAT first_hit_rank_top10": 2,
+          "NoGraph first_hit_rank_top10": 2
+        },
+        {
+          "question_id": "49569",
+          "doc_id": "fygb0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "58700",
+          "doc_id": "fgbd0079",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        },
+        {
+          "question_id": "49574",
+          "doc_id": "fygb0228",
+          "num_support_pages": 1,
+          "GAT Recall@1": 1,
+          "NoGraph Recall@1": 1,
+          "GAT first_hit_rank_top10": 1,
+          "NoGraph first_hit_rank_top10": 1
+        }
+      ]
+    }
+  }
+}

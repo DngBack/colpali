@@ -45,7 +45,7 @@ def both_support_hit_at_k(
         min_support_pages: minimum # support pages for a query to be included
 
     Returns:
-        float in [0, 1], or NaN if no eligible queries exist.
+        float in [0, 1]. If no eligible queries exist, returns 0.0.
     """
     hits = 0
     eligible = 0
@@ -59,7 +59,7 @@ def both_support_hit_at_k(
             hits += 1
 
     if eligible == 0:
-        return float("nan")
+        return 0.0
     return hits / eligible
 
 

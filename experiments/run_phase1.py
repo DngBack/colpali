@@ -74,6 +74,54 @@ from .eval.eval_support_pages import evaluate_support_pages, both_support_hit_at
 logger = logging.getLogger(__name__)
 
 
+def _resolve_graph_hparams(args) -> Tuple[float, int]:
+    """
+    Resolve graph hyperparameters from optional preset + CLI overrides.
+
+    Presets:
+      - default: keep current CLI values (sem_threshold, adj_max_gap)
+      - sparse-graph: fewer, stronger graph edges
+    """
+    sem_threshold = args.sem_threshold
+    adj_max_gap = args.adj_max_gap
+
+    if getattr(args, "graph_preset", "default") == "sparse-graph":
+        sem_threshold = max(sem_threshold, 0.75)
+        adj_max_gap = min(adj_max_gap, 1)
+
+    return sem_threshold, adj_max_gap
+
+
+def _doc_ids_from_rerank_cache_dir(cache_dir: str) -> set:
+    """Unique doc_id values stored in a train RerankDataset cache (meta.json)."""
+    meta_path = os.path.join(cache_dir, "meta.json")
+    if not os.path.isfile(meta_path):
+        raise FileNotFoundError(
+            f"Cannot load train doc ids: missing meta.json in {cache_dir}"
+        )
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    return {str(m["doc_id"]) for m in meta if m.get("doc_id")}
+
+
+def _filter_mpdoc_samples_doc_disjoint(dataset: MPDocVQADataset, banned_doc_ids: set) -> None:
+    """In-place: keep only samples whose doc_id is not in banned_doc_ids."""
+    before = len(dataset.samples)
+    dataset.samples = [s for s in dataset.samples if str(s.doc_id) not in banned_doc_ids]
+    after = len(dataset.samples)
+    logger.info(
+        "Doc-disjoint filter: kept %d/%d samples (%d rows dropped as doc_id overlap)",
+        after,
+        before,
+        before - after,
+    )
+    if after == 0:
+        raise RuntimeError(
+            "After doc-disjoint filtering, no samples remain. "
+            "Widen the val candidate window (--sample_offset / --num_samples)."
+        )
+
+
 # ===========================================================================
 # Sub-command: cache
 # ===========================================================================
@@ -163,6 +211,17 @@ def cmd_cache(args):
             num_samples=num_samples,
             sample_offset=sample_offset,
         )
+
+    train_cache_for_exclusion = getattr(args, "exclude_train_doc_ids_cache", None)
+    if train_cache_for_exclusion:
+        banned = _doc_ids_from_rerank_cache_dir(train_cache_for_exclusion)
+        logger.info(
+            "Excluding %d doc_ids from train cache %s",
+            len(banned),
+            train_cache_for_exclusion,
+        )
+        _filter_mpdoc_samples_doc_disjoint(dataset, banned)
+
     dataset.print_stats()
 
     inferencer = ColVisionInferencer(
@@ -195,9 +254,16 @@ def cmd_train(args):
     val_ds = RerankDataset.load(args.val_cache) if args.val_cache else None
 
     # Infer input_dim from first sample
+    sem_threshold, adj_max_gap = _resolve_graph_hparams(args)
+    logger.info(
+        "Graph preset=%s -> sem_threshold=%.2f, adj_max_gap=%d",
+        args.graph_preset,
+        sem_threshold,
+        adj_max_gap,
+    )
     graph_cfg = EvidenceGraphConfig(
-        sem_threshold=args.sem_threshold,
-        adj_max_gap=args.adj_max_gap,
+        sem_threshold=sem_threshold,
+        adj_max_gap=adj_max_gap,
         include_query_node=True,
         inject_query_diff=True,
         concat_stage1_score=True,
@@ -232,8 +298,8 @@ def cmd_train(args):
         batch_size=args.batch_size,
         output_dir=args.output_dir,
         top_k=args.top_k,
-        sem_threshold=args.sem_threshold,
-        adj_max_gap=args.adj_max_gap,
+        sem_threshold=sem_threshold,
+        adj_max_gap=adj_max_gap,
     )
     trainer = RerankerTrainer(model=model, config=train_cfg, graph_config=graph_cfg)
     results = trainer.train(train_ds, val_ds)
@@ -371,9 +437,16 @@ def cmd_eval(args):
     # --- Load models ---
     # Infer model dims from first sample
     sample0 = eval_ds[0]
+    sem_threshold, adj_max_gap = _resolve_graph_hparams(args)
+    logger.info(
+        "Graph preset=%s -> sem_threshold=%.2f, adj_max_gap=%d",
+        args.graph_preset,
+        sem_threshold,
+        adj_max_gap,
+    )
     graph_cfg = EvidenceGraphConfig(
-        sem_threshold=args.sem_threshold,
-        adj_max_gap=args.adj_max_gap,
+        sem_threshold=sem_threshold,
+        adj_max_gap=adj_max_gap,
         include_query_node=True,
         inject_query_diff=True,
         concat_stage1_score=True,
@@ -435,6 +508,17 @@ def cmd_eval(args):
     support_results: Dict[str, Dict] = {}
     k_values = [1, 5, 10]
 
+    # ------------------------------------------------------------------
+    # Per-query analysis (export to results/.../phase1_results.json)
+    # ------------------------------------------------------------------
+    # Rationale: when ablation (no-graph) outperforms the full GAT on Recall@1,
+    # we want to know *which queries* and *what support-page regimes*
+    # cause the failure.
+    #
+    # This analysis does not affect the main metrics printed in TABLE 1/2.
+    qids: List[str] = [eval_ds[i].question_id for i in range(len(eval_ds))]
+    doc_ids: List[str] = [eval_ds[i].doc_id for i in range(len(eval_ds))]
+
     for name, preds in all_methods.items():
         retrieval_results[name] = evaluate_retrieval(
             preds, all_golds, k_values=k_values,
@@ -444,6 +528,99 @@ def cmd_eval(args):
             preds, all_golds, k_values=k_values,
             method_name=name, verbose=False,
         )
+
+    def per_query_first_hit(pred: List[int], gold: List[int], k: int = 10) -> Dict:
+        import math
+
+        gold_set = set(gold)
+        pred_top = pred[:k]
+
+        # Rank of the first relevant (gold support) page within top-k
+        first_rank = None
+        for r, p in enumerate(pred_top, start=1):
+            if p in gold_set:
+                first_rank = r
+                break
+
+        recall1 = int(any(p in gold_set for p in pred[:1]))
+        recall5 = int(any(p in gold_set for p in pred[:5]))
+        mrr10 = 0.0 if first_rank is None else 1.0 / float(first_rank)
+
+        # nDCG@10 with binary relevance
+        relevance = [1 if p in gold_set else 0 for p in pred_top]
+        dcg = 0.0
+        for i, rel in enumerate(relevance, start=1):
+            dcg += rel / math.log2(i + 1)
+        idcg = 0.0
+        n_rel = min(len(gold_set), k)
+        for i in range(1, n_rel + 1):
+            idcg += 1 / math.log2(i + 1)
+        ndcg10 = dcg / max(idcg, 1e-8)
+
+        return {
+            "num_support_pages": len(gold_set),
+            "rank_first_hit_top10": first_rank,
+            "Recall@1": recall1,
+            "Recall@5": recall5,
+            "MRR@10": mrr10,
+            "nDCG@10": ndcg10,
+        }
+
+    # Collect per-query metrics for each method
+    analysis: Dict[str, Dict] = {"per_query": {}, "by_support_count": {}}
+    for name, preds in all_methods.items():
+        pq = []
+        by_count: Dict[int, List[Dict]] = {}
+        for i, (pred, gold) in enumerate(zip(preds, all_golds)):
+            m = per_query_first_hit(pred, gold, k=10)
+            m["question_id"] = qids[i]
+            m["doc_id"] = doc_ids[i]
+            pq.append(m)
+
+            by_count.setdefault(m["num_support_pages"], []).append(m)
+
+        # Aggregate by number of support pages
+        agg = {}
+        for c, rows in by_count.items():
+            agg[c] = {
+                "n_queries": len(rows),
+                "Recall@1": sum(r["Recall@1"] for r in rows) / max(len(rows), 1),
+                "Recall@5": sum(r["Recall@5"] for r in rows) / max(len(rows), 1),
+                "MRR@10": sum(r["MRR@10"] for r in rows) / max(len(rows), 1),
+                "nDCG@10": sum(r["nDCG@10"] for r in rows) / max(len(rows), 1),
+            }
+
+        analysis["per_query"][name] = pq
+        analysis["by_support_count"][name] = agg
+
+    # Pairwise comparison: where no-graph beats GAT on Recall@1
+    gat_name = "X-PageRerank (GAT)"
+    nog_name = "X-PageRerank (ablation: no graph)"
+    gat_preds = all_methods[gat_name]
+    nog_preds = all_methods[nog_name]
+    pair_rows = []
+    for i, (gat_pred, nog_pred, gold) in enumerate(zip(gat_preds, nog_preds, all_golds)):
+        gat_m = per_query_first_hit(gat_pred, gold, k=10)
+        nog_m = per_query_first_hit(nog_pred, gold, k=10)
+        pair_rows.append(
+            {
+                "question_id": qids[i],
+                "doc_id": doc_ids[i],
+                "num_support_pages": gat_m["num_support_pages"],
+                "GAT Recall@1": gat_m["Recall@1"],
+                "NoGraph Recall@1": nog_m["Recall@1"],
+                "GAT first_hit_rank_top10": gat_m["rank_first_hit_top10"],
+                "NoGraph first_hit_rank_top10": nog_m["rank_first_hit_top10"],
+            }
+        )
+    analysis["pairwise_no_graph_vs_gat"] = {
+        "n_queries": len(pair_rows),
+        "n_no_graph_better_recall1": sum(
+            1 for r in pair_rows if r["NoGraph Recall@1"] > r["GAT Recall@1"]
+        ),
+        "n_equal_recall1": sum(1 for r in pair_rows if r["NoGraph Recall@1"] == r["GAT Recall@1"]),
+        "per_query": pair_rows,
+    }
 
     # --- Print tables ---
     print("\n" + "=" * 70)
@@ -468,6 +645,7 @@ def cmd_eval(args):
         out = {
             "retrieval": retrieval_results,
             "support_pages": support_results,
+            "analysis": analysis,
         }
         out_path = os.path.join(args.output_dir, "phase1_results.json")
         with open(out_path, "w") as f:
@@ -534,6 +712,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_cache.add_argument("--offline", action="store_true",
                          help="Force offline mode (HF_DATASETS_OFFLINE=1 + TRANSFORMERS_OFFLINE=1). "
                               "Use when network is unavailable and data is already cached.")
+    p_cache.add_argument(
+        "--exclude_train_doc_ids_cache",
+        default=None,
+        help=(
+            "Path to an existing train RerankDataset cache (meta.json). "
+            "Before encoding, drop rows whose doc_id appears in that train cache so "
+            "this split only contains documents not present in train. "
+            "Use a larger --num_samples window after filtering so enough rows remain."
+        ),
+    )
 
     # -- train --
     p_train = sub.add_parser("train", help="Train GAT reranker on cached data")
@@ -549,6 +737,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--top_k", type=int, default=20)
     p_train.add_argument("--sem_threshold", type=float, default=0.65)
     p_train.add_argument("--adj_max_gap", type=int, default=1)
+    p_train.add_argument(
+        "--graph_preset",
+        default="default",
+        choices=["default", "sparse-graph"],
+        help=(
+            "Graph construction preset. 'sparse-graph' increases semantic threshold "
+            "and keeps only immediate adjacency links to reduce noisy edges."
+        ),
+    )
 
     # -- eval --
     p_eval = sub.add_parser("eval", help="Evaluate all methods and print comparison table")
@@ -558,6 +755,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--k", type=int, default=10)
     p_eval.add_argument("--sem_threshold", type=float, default=0.65)
     p_eval.add_argument("--adj_max_gap", type=int, default=1)
+    p_eval.add_argument(
+        "--graph_preset",
+        default="default",
+        choices=["default", "sparse-graph"],
+        help=(
+            "Graph construction preset. 'sparse-graph' increases semantic threshold "
+            "and keeps only immediate adjacency links to reduce noisy edges."
+        ),
+    )
 
     return parser
 

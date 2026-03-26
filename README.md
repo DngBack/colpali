@@ -427,6 +427,194 @@ To reproduce the results from the paper, you should checkout to the `v0.1.1` tag
 pip install colpali-engine==0.1.1
 ```
 
+## Phase 1: X-PageRerank (Cache -> Train -> Eval)
+
+This repo also contains an *experiment pipeline* for a Phase-1 post-retrieval reranker called **X-PageRerank** (GAT-based). The goal is to improve multi-page evidence retrieval by reranking the top-k pages produced by a visual late-interaction retriever (e.g. ColPali).
+
+The Phase-1 pipeline is:
+
+1. **Cache** top-K query/page embeddings + stage-1 scores into a `RerankDataset` folder (`cache/.../meta.json`, `*_q.pt`, `*_p.pt`, `*_s0.pt`, `*_mask.pt`).
+2. **Train** a `PageGATReranker` (GAT) using the cached `RerankDataset`.
+3. **Eval** by comparing ranked page predictions against gold *support pages* using IR metrics: `Recall@k`, `MRR@10`, `nDCG@10`.
+
+### 1) Cache algorithm (what gets written to `cache/...`)
+
+The caching command is implemented in `experiments/run_phase1.py` under the `cache` sub-command. Conceptually, for each dataset sample (question + document pages):
+
+1. Encode the question into multi-vector query embeddings `q_embs`.
+2. Encode the pages into multi-vector page embeddings `p_embs`.
+3. Compute **stage-1 scores** between `q_embs` and each page in the document (`stage1_scores`).
+4. Sort pages by stage-1 scores and keep only top `K` pages (`top_k`).
+5. Build a binary **support mask** over the kept pages:
+   - `support_mask[i] = 1` if the i-th kept page is a gold support page,
+   - `support_mask[i] = 0` otherwise.
+6. Save everything to disk via `RerankDataset.save()`:
+   - `meta.json`: list of `{question_id, doc_id, page_numbers}` for each cached sample
+   - `*_q.pt`: query embeddings
+   - `*_p.pt`: page embeddings for the top-K candidate pages
+   - `*_s0.pt`: stage-1 scores for the top-K pages
+   - `*_mask.pt`: support mask over the top-K pages
+
+> Important: `train` later relies on `meta.json`. If your cache was interrupted, you may end up with missing/empty `meta.json`.
+
+### 2) Train algorithm (GAT reranker and losses)
+
+Training is implemented in `experiments/run_phase1.py` under the `train` sub-command, and the actual model/loss logic is in `experiments/train/train_reranker.py`.
+
+Per epoch:
+
+1. Load cached samples with `RerankDataset.load()`.
+2. For each query sample:
+   - Build an **evidence graph** on the query-time top-K candidate pages (`build_evidence_graph_from_retrieval`).
+   - Run the GAT reranker (`PageGATReranker`) to predict new reranking scores.
+3. Optimize a combination of losses:
+   - **Listwise loss** (softmax over candidate scores; positives are the support pages indicated by `support_mask`)
+   - **Pairwise margin loss** (hinge-style ranking loss between positive support pages and negative pages, using a margin)
+
+The early stopping criterion is **validation `Recall@5`** (patience on `Recall@5`).
+
+### 3) Evaluation metrics (exact definitions used in this code)
+
+Evaluation uses `experiments/eval/eval_retrieval.py` and compares:
+
+- `predictions`: ranked list of *page numbers* per query (top-k from stage-1 or reranker scores)
+- `ground_truth`: list of gold *support page numbers* per query, derived as:
+  - `gold = [sample.page_numbers[i] for i, v in enumerate(sample.support_mask.tolist()) if v > 0]`
+
+Metrics:
+
+1. **Recall@k** (`recall_at_k` in `experiments/eval/eval_retrieval.py`)
+   - For each query, it is a hit if **any** gold support page is present in `pred[:k]`.
+   - `Recall@k = (#queries with at least one hit) / (#queries)`
+
+2. **MRR@10** (`mrr_at_k`)
+   - For each query, find the rank of the **first** relevant (gold support) page within top-10.
+   - Reciprocal rank is `1 / rank_first_hit` (or 0 if none in top-10).
+   - `MRR@10 = average(rec_rank across queries)`
+
+3. **nDCG@10** (`ndcg_at_k`)
+   - Binary relevance: `rel = 1` if a predicted page is in gold support set, else 0.
+   - `DCG@k = sum_{i=1..k} rel_i / log2(i+1)`
+   - `IDCG@k` uses an ideal ranking with `min(|gold|, k)` ones.
+   - `nDCG@k = DCG / IDCG`
+
+### 4) Reproducible commands (offline MP-DocVQA caching)
+
+Set `PARQUET_DIR` to the directory that contains local parquet shards (HF hub cache or any local export):
+
+```bash
+export PARQUET_DIR="~/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/snapshots/<hash>/data/"
+```
+
+Because offline mode can miss a labeled `train` split, this pipeline usually builds both train and val from the labeled `val` parquet split.
+
+- **Row-only split** (`sample_offset` / `num_samples`): train and val do not share the same *rows*, but they can still share the same **`doc_id`** (different questions on the same PDF).
+- **Document-disjoint val (recommended for GAT):** pass `--exclude_train_doc_ids_cache` when building val. The script **drops candidate rows before encoding** if `doc_id` appears in the train cache, so the model is never validated on embeddings from documents seen during train.
+
+#### Cache train (example: rows 0..199)
+```bash
+rm -rf cache/real_train_split
+python -m experiments.run_phase1 cache \
+  --split val --offline \
+  --parquet_dir "$PARQUET_DIR" \
+  --model_name vidore/colSmol-256M --model_type colidefics3 \
+  --output_dir cache/real_train_split \
+  --top_k 10 --batch_size 4 \
+  --num_samples 200 --sample_offset 0
+```
+
+#### Cache val (document-disjoint from train — widen the window so enough rows survive filtering)
+```bash
+rm -rf cache/real_val_doc_disjoint
+python -m experiments.run_phase1 cache \
+  --split val --offline \
+  --parquet_dir "$PARQUET_DIR" \
+  --model_name vidore/colSmol-256M --model_type colidefics3 \
+  --output_dir cache/real_val_doc_disjoint \
+  --top_k 10 --batch_size 4 \
+  --num_samples 600 --sample_offset 200 \
+  --exclude_train_doc_ids_cache cache/real_train_split
+```
+
+Check the log line `Doc-disjoint filter: kept X/Y samples`; increase `--num_samples` if `X` is too small.
+
+#### Train GAT reranker
+```bash
+python -m experiments.run_phase1 train \
+  --train_cache cache/real_train_split \
+  --val_cache   cache/real_val_doc_disjoint \
+  --output_dir  checkpoints/gat_real_split \
+  --num_epochs 10 --batch_size 16 --lr 5e-4
+```
+
+#### Eval on val cache (or replace with your `test` cache)
+```bash
+python -m experiments.run_phase1 eval \
+  --eval_cache cache/real_val_doc_disjoint \
+  --checkpoint checkpoints/gat_real_split/best.pt \
+  --output_dir results/phase1_doc_disjoint_val
+```
+
+### 5) Strict “no document overlap” test (recommended)
+
+If you want **test** documents that do not appear in train **or** val, filter a candidate test pool by `doc_id`.
+
+1. Build a candidate test pool (example: more rows than needed):
+```bash
+rm -rf cache/real_test_pool
+python -m experiments.run_phase1 cache \
+  --split val --offline \
+  --parquet_dir "$PARQUET_DIR" \
+  --model_name vidore/colSmol-256M --model_type colidefics3 \
+  --output_dir cache/real_test_pool \
+  --top_k 10 --batch_size 4 \
+  --num_samples 300 --sample_offset 300
+```
+
+2. Filter out any `doc_id` present in train/val without re-encoding embeddings:
+```bash
+rm -rf cache/real_test_split_no_doc_overlap
+python -m experiments.train.filter_rerank_cache \
+  --candidate_cache cache/real_test_pool \
+  --exclude_cache cache/real_train_split \
+  --exclude_cache cache/real_val_doc_disjoint \
+  --output_dir cache/real_test_split_no_doc_overlap
+```
+
+3. Eval on the filtered cache:
+```bash
+python -m experiments.run_phase1 eval \
+  --eval_cache cache/real_test_split_no_doc_overlap \
+  --checkpoint checkpoints/gat_real_split/best.pt \
+  --output_dir results/test_real_no_doc_overlap
+```
+
+### 6) Example results from this workspace (Phase 1, row-split val — not document-disjoint)
+
+The numbers below used `cache/real_val_split` built with **row offset only** (train and val could share `doc_id`).
+
+On:
+- `cache/real_train_split` = 190 samples
+- `cache/real_val_split` = 78 samples
+
+Training:
+- early stopping at epoch 8
+- best checkpoint with `Best Recall@5 = 0.9359`
+
+Evaluation (`Recall@1`, `Recall@5`, `MRR@10`, `nDCG@10`):
+
+```text
+ColPali (stage-1):             Recall@1=0.3590, Recall@5=0.8718, MRR@10=0.5840, nDCG@10=0.6852
+ColPali + MLP reranker:       Recall@1=0.4615, Recall@5=0.9231, MRR@10=0.6454, nDCG@10=0.7323
+X-PageRerank (ablation no-graph): Recall@1=0.5769, Recall@5=0.9359, MRR@10=0.7322, nDCG@10=0.7980
+X-PageRerank (GAT):          Recall@1=0.5897, Recall@5=0.9359, MRR@10=0.7377, nDCG@10=0.8017
+```
+
+Interpretation:
+- Recall@5 saturates, but reranking improves ranking quality in deeper ranks (`MRR@10`, `nDCG@10`).
+
+Re-run train/eval with `cache/real_val_doc_disjoint` for **document-level** generalization.
+
 ## Citation
 
 **ColPali: Efficient Document Retrieval with Vision Language Models**  
