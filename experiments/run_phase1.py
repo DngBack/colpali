@@ -49,13 +49,15 @@ python -m experiments.run_phase1 eval \\
 from __future__ import annotations
 
 import argparse
+import gc
+import glob
 import json
 import logging
 import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import torch
 import torch.nn as nn
@@ -72,6 +74,47 @@ from .eval.eval_retrieval import evaluate_retrieval, print_comparison_table
 from .eval.eval_support_pages import evaluate_support_pages, both_support_hit_at_k
 
 logger = logging.getLogger(__name__)
+
+
+def _parquet_split_row_count(parquet_dir: str, split_prefix: str) -> int:
+    """Total rows in split without decoding images (cheap)."""
+    pattern = os.path.join(os.path.expanduser(parquet_dir), f"{split_prefix}-*.parquet")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        raise FileNotFoundError(
+            f"No parquet files matching '{pattern}'. "
+            f"Directory: {os.listdir(os.path.expanduser(parquet_dir))}"
+        )
+    try:
+        import pyarrow.parquet as pq  # type: ignore
+
+        return int(sum(pq.read_metadata(f).num_rows for f in files))
+    except Exception:
+        from datasets import load_dataset
+
+        raw = load_dataset("parquet", data_files={split_prefix: files}, split=split_prefix)
+        return len(raw)
+
+
+def _append_rerank_cache_files(
+    output_dir: str,
+    samples: List[RerankSample],
+    start_index: int,
+) -> Tuple[int, List[dict]]:
+    """Write RerankSample tensors and return (next_index, meta rows)."""
+    meta_rows: List[dict] = []
+    for i, s in enumerate(samples):
+        idx = start_index + i
+        torch.save(s.query_embs, os.path.join(output_dir, f"{idx}_q.pt"))
+        torch.save(s.page_embs, os.path.join(output_dir, f"{idx}_p.pt"))
+        torch.save(s.stage1_scores, os.path.join(output_dir, f"{idx}_s0.pt"))
+        torch.save(s.support_mask, os.path.join(output_dir, f"{idx}_mask.pt"))
+        meta_rows.append({
+            "question_id": s.question_id,
+            "doc_id": s.doc_id,
+            "page_numbers": s.page_numbers,
+        })
+    return start_index + len(samples), meta_rows
 
 
 def _resolve_graph_hparams(args) -> Tuple[float, int]:
@@ -192,6 +235,138 @@ def cmd_cache(args):
     num_samples   = getattr(args, "num_samples", None)
 
     parquet_dir = getattr(args, "parquet_dir", None)
+    if isinstance(parquet_dir, str):
+        parquet_dir = parquet_dir.strip() or None
+    chunk_rows = int(getattr(args, "cache_chunk_rows", 0) or 0)
+    streaming = getattr(args, "streaming", False)
+
+    if chunk_rows > 0 and streaming:
+        logger.warning(
+            "--cache_chunk_rows is ignored when --streaming is set (HF streaming iterator)."
+        )
+        chunk_rows = 0
+
+    # Chunked mode needs a bounded row window: parquet (count rows) or explicit --num_samples.
+    use_chunked = chunk_rows > 0 and (parquet_dir is not None or num_samples is not None)
+    if chunk_rows > 0 and not use_chunked and not streaming:
+        logger.warning(
+            "--cache_chunk_rows ignored without --parquet_dir and without --num_samples "
+            "(load full HF split in one pass; set --num_samples to enable chunking)."
+        )
+
+    train_cache_for_exclusion = getattr(args, "exclude_train_doc_ids_cache", None)
+    banned: Optional[Set[str]] = None
+    if train_cache_for_exclusion:
+        banned = _doc_ids_from_rerank_cache_dir(train_cache_for_exclusion)
+        logger.info(
+            "Excluding %d doc_ids from train cache %s",
+            len(banned),
+            train_cache_for_exclusion,
+        )
+
+    inferencer = ColVisionInferencer(
+        model_name_or_path=args.model_name,
+        model_type=args.model_type,
+        batch_size=args.batch_size,
+        maxsim_doc_chunk=getattr(args, "maxsim_doc_chunk", 16),
+    )
+
+    if use_chunked:
+        if parquet_dir:
+            total_rows = _parquet_split_row_count(parquet_dir, split_for_parquet)
+            if num_samples is not None:
+                n_to_process = min(num_samples, max(0, total_rows - sample_offset))
+            else:
+                n_to_process = max(0, total_rows - sample_offset)
+        else:
+            if num_samples is None:
+                raise ValueError(
+                    "Chunked cache needs a row budget: pass a non-empty --parquet_dir "
+                    "(offline MP-DocVQA parquet, recommended) or --num_samples for HF. "
+                    "If you use --parquet_dir \"$PARQUET_DIR\", ensure the variable is "
+                    "set (e.g. echo \"$PARQUET_DIR\") — an empty path is ignored and "
+                    "falls back to HF."
+                )
+            n_to_process = num_samples
+
+        if n_to_process <= 0:
+            raise RuntimeError("Nothing to process (check --sample_offset / --num_samples).")
+
+        os.makedirs(args.output_dir, exist_ok=True)
+        meta_all: List[dict] = []
+        global_idx = 0
+        n_chunks = (n_to_process + chunk_rows - 1) // chunk_rows
+        logger.info(
+            "Chunked cache: %d dataset rows in %d chunks of up to %d "
+            "(lower peak RAM — avoids loading all page images at once).",
+            n_to_process,
+            n_chunks,
+            chunk_rows,
+        )
+
+        for chunk_i, local_start in enumerate(range(0, n_to_process, chunk_rows)):
+            n_chunk = min(chunk_rows, n_to_process - local_start)
+            abs_offset = sample_offset + local_start
+            logger.info(
+                "Chunk %d/%d: rows [%d, %d) (absolute offset=%d, n=%d)",
+                chunk_i + 1,
+                n_chunks,
+                local_start,
+                local_start + n_chunk,
+                abs_offset,
+                n_chunk,
+            )
+
+            if parquet_dir:
+                dataset = MPDocVQADataset.from_parquet_dir(
+                    parquet_dir=parquet_dir,
+                    split_prefix=split_for_parquet,
+                    max_pages_per_doc=args.max_pages,
+                    num_samples=n_chunk,
+                    sample_offset=abs_offset,
+                )
+            else:
+                dataset = MPDocVQADataset(
+                    split=args.split,
+                    hf_dataset_id=getattr(args, "hf_dataset_id", None),
+                    local_json_path=getattr(args, "local_json_path", None),
+                    max_pages_per_doc=args.max_pages,
+                    hf_token=hf_token,
+                    streaming=False,
+                    num_samples=n_chunk,
+                    sample_offset=abs_offset,
+                )
+
+            if banned is not None:
+                _filter_mpdoc_samples_doc_disjoint(dataset, banned)
+
+            rerank_ds = RerankDataset.build_from_index(
+                dataset=dataset,
+                index=None,
+                inferencer=inferencer,
+                top_k=args.top_k,
+                show_progress=True,
+            )
+            global_idx, rows = _append_rerank_cache_files(
+                args.output_dir, rerank_ds.samples, global_idx,
+            )
+            meta_all.extend(rows)
+
+            del dataset
+            del rerank_ds
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        with open(os.path.join(args.output_dir, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump(meta_all, f)
+        logger.info(
+            "Done (chunked). Saved %d cached samples to %s",
+            len(meta_all),
+            args.output_dir,
+        )
+        return
+
     if parquet_dir:
         dataset = MPDocVQADataset.from_parquet_dir(
             parquet_dir=parquet_dir,
@@ -207,28 +382,15 @@ def cmd_cache(args):
             local_json_path=getattr(args, "local_json_path", None),
             max_pages_per_doc=args.max_pages,
             hf_token=hf_token,
-            streaming=getattr(args, "streaming", False),
+            streaming=streaming,
             num_samples=num_samples,
             sample_offset=sample_offset,
         )
 
-    train_cache_for_exclusion = getattr(args, "exclude_train_doc_ids_cache", None)
-    if train_cache_for_exclusion:
-        banned = _doc_ids_from_rerank_cache_dir(train_cache_for_exclusion)
-        logger.info(
-            "Excluding %d doc_ids from train cache %s",
-            len(banned),
-            train_cache_for_exclusion,
-        )
+    if banned is not None:
         _filter_mpdoc_samples_doc_disjoint(dataset, banned)
 
     dataset.print_stats()
-
-    inferencer = ColVisionInferencer(
-        model_name_or_path=args.model_name,
-        model_type=args.model_type,
-        batch_size=args.batch_size,
-    )
 
     rerank_ds = RerankDataset.build_from_index(
         dataset=dataset,
@@ -690,6 +852,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_cache.add_argument("--top_k", type=int, default=20)
     p_cache.add_argument("--max_pages", type=int, default=60)
     p_cache.add_argument("--batch_size", type=int, default=4)
+    p_cache.add_argument(
+        "--maxsim_doc_chunk",
+        type=int,
+        default=16,
+        help=(
+            "When scoring query vs all pages (MaxSim), process this many pages at a time. "
+            "Lowers RAM peak for long documents / high token counts; try 4–8 if cache still crashes."
+        ),
+    )
     # Dataset source options
     p_cache.add_argument("--hf_dataset_id", default=None,
                          help="HuggingFace dataset ID (default: lmms-lab/MP-DocVQA)")
@@ -720,6 +891,17 @@ def build_parser() -> argparse.ArgumentParser:
             "Before encoding, drop rows whose doc_id appears in that train cache so "
             "this split only contains documents not present in train. "
             "Use a larger --num_samples window after filtering so enough rows remain."
+        ),
+    )
+    p_cache.add_argument(
+        "--cache_chunk_rows",
+        type=int,
+        default=512,
+        help=(
+            "Process the dataset in row chunks of this size when building the cache "
+            "(lower peak RAM). MP-DocVQA loads every page image per row into memory; "
+            "large --num_samples without chunking can OOM or be killed by the OS. "
+            "Use 0 for the legacy single-load path (all rows in RAM at once)."
         ),
     )
 

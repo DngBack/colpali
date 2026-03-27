@@ -100,6 +100,7 @@ def maxsim_score(
     query_embs: torch.Tensor,
     doc_embs: torch.Tensor,
     batch_size: int = 64,
+    doc_chunk_size: int = 16,
 ) -> torch.Tensor:
     """
     Compute MaxSim late-interaction scores between queries and documents.
@@ -108,6 +109,9 @@ def maxsim_score(
         query_embs: (Q, Tq, D)  — L2-normalised multi-vector query embeddings
         doc_embs:   (N, Td, D)  — L2-normalised multi-vector doc embeddings
         batch_size: process queries in chunks to avoid OOM
+        doc_chunk_size: process this many pages at a time per query batch.
+            The full ``(B, N, Tq, Td)`` tensor can explode RAM / CUDA with
+            large N and long token sequences (e.g. ColIdefics on 60-page docs).
 
     Returns:
         scores: (Q, N)  float32 tensor
@@ -116,12 +120,19 @@ def maxsim_score(
     N = doc_embs.shape[0]
     scores = torch.zeros(Q, N, device=query_embs.device, dtype=torch.float32)
 
+    if doc_chunk_size < 1:
+        doc_chunk_size = N
+
     for q_start in range(0, Q, batch_size):
         q_chunk = query_embs[q_start : q_start + batch_size]  # (B, Tq, D)
-        # (B, Tq, D) x (N, Td, D) -> (B, N, Tq, Td)
-        raw = torch.einsum("bqd,ntd->bnqt", q_chunk, doc_embs)
-        # MaxSim: max over doc tokens, sum over query tokens
-        scores[q_start : q_start + batch_size] = raw.amax(dim=-1).sum(dim=-1)
+        q_end = q_start + q_chunk.shape[0]
+        for n_start in range(0, N, doc_chunk_size):
+            n_end = min(n_start + doc_chunk_size, N)
+            d_chunk = doc_embs[n_start:n_end]  # (n_sub, Td, D)
+            # (B, Tq, D) x (n_sub, Td, D) -> (B, n_sub, Tq, Td)
+            raw = torch.einsum("bqd,ntd->bnqt", q_chunk, d_chunk)
+            # MaxSim: max over doc tokens, sum over query tokens
+            scores[q_start:q_end, n_start:n_end] = raw.amax(dim=-1).sum(dim=-1)
 
     return scores
 
@@ -177,11 +188,13 @@ class ColVisionInferencer:
         device: Optional[str] = None,
         torch_dtype: torch.dtype = torch.bfloat16,
         batch_size: int = 4,
+        maxsim_doc_chunk: int = 16,
         show_progress: bool = True,
     ):
         self.model_name_or_path = model_name_or_path
         self.model_type = model_type
         self.batch_size = batch_size
+        self.maxsim_doc_chunk = max(1, int(maxsim_doc_chunk))
         self.show_progress = show_progress
 
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -254,7 +267,12 @@ class ColVisionInferencer:
         doc_embs: torch.Tensor,
     ) -> torch.Tensor:
         """MaxSim late-interaction: (Q, N)."""
-        return maxsim_score(query_embs, doc_embs, batch_size=self.batch_size * 4)
+        return maxsim_score(
+            query_embs,
+            doc_embs,
+            batch_size=self.batch_size * 4,
+            doc_chunk_size=self.maxsim_doc_chunk,
+        )
 
     def retrieve_top_k(
         self,

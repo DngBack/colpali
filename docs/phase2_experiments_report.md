@@ -100,3 +100,91 @@ Experiment 2 tap trung vao hai viec practical:
 - Dua vao mot graph preset mang tinh bao thu (sparse) de giam nhieu canh.
 
 Hai thay doi nay tao nen mot nen danh gia va tuning on dinh hon cho vong train/eval tiep theo cua X-PageRerank.
+
+---
+
+## Ke hoach "ket qua hoan chinh" (Train/Test nhieu hon, tach tu val, khong trung)
+
+Yeu cau:
+- Tat ca du lieu train/val/test deu cat ra tu nguon `val` (candidate pool lon).
+- Khong trung nhau giua cac split theo:
+  - `doc_id`
+  - `question_id`
+
+Da bo sung script:
+- `experiments/train/make_disjoint_splits.py`
+
+Script nay:
+- Nhan 1 cache nguon (da encode tu `--split val` voi so mau lon).
+- Chia theo **nhom doc_id** (de dam bao doc disjoint).
+- Kiem tra them **question_id overlap = none**.
+- Xuat:
+  - `output_root/train`
+  - `output_root/val`
+  - `output_root/test`
+  - `output_root/split_summary.json`
+
+### Quy trinh de xay bo ket qua day du
+
+1) Tao candidate cache lon tu val:
+```bash
+python -m experiments.run_phase1 cache \
+  --split val --offline \
+  --parquet_dir "$PARQUET_DIR" \
+  --model_name vidore/colSmol-256M --model_type colidefics3 \
+  --output_dir cache/val_candidate_large \
+  --top_k 10 --batch_size 4 \
+  --num_samples 5000 --sample_offset 0 \
+  --cache_chunk_rows 512
+```
+
+### Giai thich: vi sao `num_samples` lon (vd >2000) de bi "crash"
+
+**Khong phai do het dong val:** split `val` cua `lmms-lab/MP-DocVQA` (parquet) co khoang **5187** hang, nen `--num_samples 3000` van hop le ve mat du lieu.
+
+**Nguyen nhan chinh: RAM dinh (OOM) khi load dataset.**
+
+Trong `MPDocVQADataset.from_parquet_dir`, moi hang duoc parse thanh mot `MPDocVQASample` voi **tat ca anh trang** (PIL, toi `max_pages`, mac dinh 60) giu trong RAM. Neu ban chon `--num_samples` rat lon **mot lan**, ban se giu dong thoi:
+
+`num_samples x (so trang/doc) x kich thuoc anh decoded`
+
+Ngay khi vuot nguong RAM may / cgroup / `ulimit`, process co the:
+- bi **SIGKILL** (Linux OOM killer) — khong co Python stack trace
+- hoac `MemoryError`
+
+**Cach xu ly da tich hop trong code:** lenh `cache` co tham so `--cache_chunk_rows` (mac dinh **512**). No xu ly parquet (hoac HF + `--num_samples`) theo tung doan: moi doan chi decode + encode mot phan hang, sau do `del` dataset va `gc.collect()`, nen **dinh RAM thap hon** so voi load het mot lan.
+
+Neu muon tat chunking (hanh vi cu, de OOM khi `--num_samples` rat lon): dung `--cache_chunk_rows 0`.
+
+2) Tach train/val/test disjoint nghiem ngat:
+```bash
+python -m experiments.train.make_disjoint_splits \
+  --candidate_cache cache/val_candidate_large \
+  --output_root cache/val_based_splits_strict \
+  --train_ratio 0.7 --val_ratio 0.15 --test_ratio 0.15 \
+  --seed 42
+```
+
+3) Train tren split moi:
+```bash
+python -m experiments.run_phase1 train \
+  --train_cache cache/val_based_splits_strict/train \
+  --val_cache   cache/val_based_splits_strict/val \
+  --output_dir  checkpoints/gat_val_based_strict \
+  --graph_preset sparse-graph
+```
+
+4) Eval tren test split (khong trung doc/question):
+```bash
+python -m experiments.run_phase1 eval \
+  --eval_cache  cache/val_based_splits_strict/test \
+  --checkpoint  checkpoints/gat_val_based_strict/best.pt \
+  --output_dir  results/phase2_val_based_strict_test \
+  --graph_preset sparse-graph
+```
+
+### Checklist xac nhan split hop le
+- Kiem tra file `cache/val_based_splits_strict/split_summary.json`:
+  - `constraints.doc_id_overlap = "none"`
+  - `constraints.question_id_overlap = "none"`
+- Dam bao train/val/test deu co du so sample (khong qua nho).

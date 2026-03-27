@@ -26,6 +26,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import math
@@ -202,6 +203,12 @@ class RerankDataset(Dataset):
                 support_mask=support_mask,
                 doc_id=sample.doc_id if hasattr(sample, "doc_id") else "",
             ))
+            # Free decoded PIL pages before the next sample (large RAM for multi-page docs).
+            if hasattr(sample, "images") and sample.images is not None:
+                sample.images.clear()
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         logger.info("Built RerankDataset: %d samples", len(samples))
         return cls(samples)
