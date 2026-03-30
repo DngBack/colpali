@@ -321,7 +321,7 @@ class RerankerTrainer:
 
     def __init__(
         self,
-        model: PageGATReranker,
+        model: nn.Module,
         config: TrainingConfig,
         graph_config: Optional[EvidenceGraphConfig] = None,
         device: Optional[torch.device] = None,
@@ -356,11 +356,20 @@ class RerankerTrainer:
 
     def _forward_one(self, sample: RerankSample) -> Tuple[torch.Tensor, torch.Tensor]:
         """Run one forward pass. Returns (pred_scores (K,), support_mask (K,))."""
-        graph = self._build_graph(sample)
-        graph.to(self.device)
-
         s0 = sample.stage1_scores.to(self.device)
-        scores = self.model.rerank(graph, stage1_scores=s0, device=self.device)
+
+        if hasattr(self.model, "rerank_from_multivector"):
+            scores = self.model.rerank_from_multivector(
+                page_embs=sample.page_embs.to(self.device),
+                query_embs=sample.query_embs.to(self.device),
+                page_numbers=sample.page_numbers,
+                stage1_scores=s0,
+            )
+        else:
+            graph = self._build_graph(sample)
+            graph.to(self.device)
+            scores = self.model.rerank(graph, stage1_scores=s0, device=self.device)
+
         support = sample.support_mask.to(self.device)
         return scores, support
 

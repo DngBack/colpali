@@ -67,6 +67,7 @@ from .data.mpdocvqa_loader import MPDocVQADataset
 from .retrieval.colpali_infer import ColVisionInferencer, maxsim_score, pool_multivector
 from .graph.build_query_graph import EvidenceGraph, EvidenceGraphConfig, build_evidence_graph_from_retrieval
 from .models.page_gat_reranker import GATConfig, PageGATReranker, MLPReranker
+from .models.region_graph_reranker import RegionGATConfig, RegionGraphReranker
 from .train.train_reranker import (
     RerankDataset, RerankSample, RerankerTrainer, TrainingConfig, collate_rerank,
 )
@@ -410,12 +411,11 @@ def cmd_cache(args):
 def cmd_train(args):
     """Train the GAT reranker on cached embeddings."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    logger.info("=== Phase 1 — Train GAT Reranker ===")
+    logger.info("=== Train Reranker (%s) ===", args.reranker_type)
 
     train_ds = RerankDataset.load(args.train_cache)
     val_ds = RerankDataset.load(args.val_cache) if args.val_cache else None
 
-    # Infer input_dim from first sample
     sem_threshold, adj_max_gap = _resolve_graph_hparams(args)
     logger.info(
         "Graph preset=%s -> sem_threshold=%.2f, adj_max_gap=%d",
@@ -423,36 +423,53 @@ def cmd_train(args):
         sem_threshold,
         adj_max_gap,
     )
-    graph_cfg = EvidenceGraphConfig(
-        sem_threshold=sem_threshold,
-        adj_max_gap=adj_max_gap,
-        include_query_node=True,
-        inject_query_diff=True,
-        concat_stage1_score=True,
-    )
-    sample0 = train_ds[0]
-    g0 = build_evidence_graph_from_retrieval(
-        page_embs=sample0.page_embs,
-        query_embs=sample0.query_embs,
-        page_numbers=sample0.page_numbers,
-        stage1_scores=sample0.stage1_scores.tolist(),
-        config=graph_cfg,
-    )
-    input_dim = g0.feat_dim
-    logger.info("Input dim = %d", input_dim)
 
-    model_cfg = GATConfig(
-        input_dim=input_dim,
-        hidden_dim=args.hidden_dim,
-        output_dim=64,
-        num_heads=args.num_heads,
-        num_layers=args.num_layers,
-        dropout=0.1,
-        lambda_mix=0.5,
-    )
-    model = PageGATReranker(config=model_cfg)
+    graph_cfg: Optional[EvidenceGraphConfig] = None
+    if args.reranker_type == "page":
+        graph_cfg = EvidenceGraphConfig(
+            sem_threshold=sem_threshold,
+            adj_max_gap=adj_max_gap,
+            include_query_node=True,
+            inject_query_diff=True,
+            concat_stage1_score=True,
+        )
+        sample0 = train_ds[0]
+        g0 = build_evidence_graph_from_retrieval(
+            page_embs=sample0.page_embs,
+            query_embs=sample0.query_embs,
+            page_numbers=sample0.page_numbers,
+            stage1_scores=sample0.stage1_scores.tolist(),
+            config=graph_cfg,
+        )
+        input_dim = g0.feat_dim
+        logger.info("Input dim = %d", input_dim)
+
+        model_cfg = GATConfig(
+            input_dim=input_dim,
+            hidden_dim=args.hidden_dim,
+            output_dim=64,
+            num_heads=args.num_heads,
+            num_layers=args.num_layers,
+            dropout=0.1,
+            lambda_mix=0.5,
+        )
+        model = PageGATReranker(config=model_cfg)
+    else:
+        model_cfg = RegionGATConfig(
+            grid_rows=args.grid_rows,
+            grid_cols=args.grid_cols,
+            input_dim=train_ds[0].page_embs.shape[-1],
+            hidden_dim=args.hidden_dim,
+            output_dim=64,
+            num_heads=args.num_heads,
+            num_layers=args.num_layers,
+            cross_page_region_edges=args.cross_page_region_edges,
+            sem_threshold_region=args.sem_threshold_region,
+        )
+        model = RegionGraphReranker(config=model_cfg)
+
     n_params = sum(p.numel() for p in model.parameters())
-    logger.info("PageGATReranker: %d parameters", n_params)
+    logger.info("%s params: %d", model.__class__.__name__, n_params)
 
     train_cfg = TrainingConfig(
         learning_rate=args.lr,
@@ -549,6 +566,32 @@ def _run_gat_reranker(
     return all_preds, all_golds
 
 
+def _run_region_evidence_reranker(
+    eval_ds: RerankDataset,
+    model: RegionGraphReranker,
+    device: torch.device,
+    k: int,
+) -> Tuple[List, List]:
+    """Evidence-graph reranker with page+region nodes."""
+    model.eval()
+    all_preds, all_golds = [], []
+    with torch.no_grad():
+        for sample in eval_ds:
+            s0 = sample.stage1_scores.to(device)
+            scores = model.rerank_from_multivector(
+                page_embs=sample.page_embs.to(device),
+                query_embs=sample.query_embs.to(device),
+                page_numbers=sample.page_numbers,
+                stage1_scores=s0,
+            ).cpu()
+            sorted_local = scores.argsort(descending=True).tolist()
+            pred = [sample.page_numbers[i] for i in sorted_local[:k]]
+            gold = [sample.page_numbers[i] for i, v in enumerate(sample.support_mask.tolist()) if v > 0]
+            all_preds.append(pred)
+            all_golds.append(gold)
+    return all_preds, all_golds
+
+
 def _run_ablation_no_graph(
     eval_ds: RerankDataset,
     model: PageGATReranker,
@@ -590,7 +633,7 @@ def _run_ablation_no_graph(
 def cmd_eval(args):
     """Run all baselines + X-PageRerank and print a comparison table."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    logger.info("=== Phase 1 — Evaluation ===")
+    logger.info("=== Evaluation (%s) ===", args.reranker_type)
 
     eval_ds = RerankDataset.load(args.eval_cache)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -626,14 +669,28 @@ def cmd_eval(args):
     # MLP baseline
     mlp_model = MLPReranker(input_dim=page_dim).to(device)
 
-    # GAT model
-    gat_cfg = GATConfig(input_dim=feat_dim, hidden_dim=256, num_layers=2, num_heads=4)
-    gat_model = PageGATReranker(config=gat_cfg).to(device)
+    if args.reranker_type == "page":
+        reranker_model = PageGATReranker(
+            config=GATConfig(input_dim=feat_dim, hidden_dim=256, num_layers=2, num_heads=4)
+        ).to(device)
+    else:
+        reranker_model = RegionGraphReranker(
+            config=RegionGATConfig(
+                grid_rows=args.grid_rows,
+                grid_cols=args.grid_cols,
+                input_dim=page_dim,
+                hidden_dim=256,
+                num_layers=2,
+                num_heads=4,
+                cross_page_region_edges=args.cross_page_region_edges,
+                sem_threshold_region=args.sem_threshold_region,
+            )
+        ).to(device)
 
     if args.checkpoint and os.path.exists(args.checkpoint):
         ckpt = torch.load(args.checkpoint, map_location=device)
-        gat_model.load_state_dict(ckpt["model_state_dict"])
-        logger.info("Loaded GAT checkpoint from %s", args.checkpoint)
+        reranker_model.load_state_dict(ckpt["model_state_dict"])
+        logger.info("Loaded checkpoint from %s", args.checkpoint)
     else:
         logger.warning("No checkpoint provided or not found; using random weights")
 
@@ -648,23 +705,32 @@ def cmd_eval(args):
     mlp_preds, _ = _run_mlp_baseline(eval_ds, mlp_model, device, k)
     logger.info("  done in %.1fs", time.time() - t0)
 
-    logger.info("Running X-PageRerank (GAT) …")
-    t0 = time.time()
-    gat_preds, _ = _run_gat_reranker(eval_ds, gat_model, graph_cfg, device, k)
-    logger.info("  done in %.1fs", time.time() - t0)
+    if args.reranker_type == "page":
+        logger.info("Running X-PageRerank (GAT) …")
+        t0 = time.time()
+        rerank_preds, _ = _run_gat_reranker(eval_ds, reranker_model, graph_cfg, device, k)
+        logger.info("  done in %.1fs", time.time() - t0)
 
-    logger.info("Running ablation: no-graph …")
-    t0 = time.time()
-    nograph_preds, _ = _run_ablation_no_graph(eval_ds, gat_model, graph_cfg, device, k)
-    logger.info("  done in %.1fs", time.time() - t0)
+        logger.info("Running ablation: no-graph …")
+        t0 = time.time()
+        nograph_preds, _ = _run_ablation_no_graph(eval_ds, reranker_model, graph_cfg, device, k)
+        logger.info("  done in %.1fs", time.time() - t0)
+    else:
+        logger.info("Running EvidenceGraph-RAG (region evidence graph) …")
+        t0 = time.time()
+        rerank_preds, _ = _run_region_evidence_reranker(eval_ds, reranker_model, device, k)
+        logger.info("  done in %.1fs", time.time() - t0)
 
     # --- Evaluate ---
     all_methods = {
         "ColPali (stage-1)": colpali_preds,
         "ColPali + MLP reranker": mlp_preds,
-        "X-PageRerank (ablation: no graph)": nograph_preds,
-        "X-PageRerank (GAT)": gat_preds,
     }
+    if args.reranker_type == "page":
+        all_methods["X-PageRerank (ablation: no graph)"] = nograph_preds
+        all_methods["X-PageRerank (GAT)"] = rerank_preds
+    else:
+        all_methods["EvidenceGraph-RAG (page+region)"] = rerank_preds
 
     retrieval_results: Dict[str, Dict] = {}
     support_results: Dict[str, Dict] = {}
@@ -755,34 +821,35 @@ def cmd_eval(args):
         analysis["per_query"][name] = pq
         analysis["by_support_count"][name] = agg
 
-    # Pairwise comparison: where no-graph beats GAT on Recall@1
-    gat_name = "X-PageRerank (GAT)"
-    nog_name = "X-PageRerank (ablation: no graph)"
-    gat_preds = all_methods[gat_name]
-    nog_preds = all_methods[nog_name]
-    pair_rows = []
-    for i, (gat_pred, nog_pred, gold) in enumerate(zip(gat_preds, nog_preds, all_golds)):
-        gat_m = per_query_first_hit(gat_pred, gold, k=10)
-        nog_m = per_query_first_hit(nog_pred, gold, k=10)
-        pair_rows.append(
-            {
-                "question_id": qids[i],
-                "doc_id": doc_ids[i],
-                "num_support_pages": gat_m["num_support_pages"],
-                "GAT Recall@1": gat_m["Recall@1"],
-                "NoGraph Recall@1": nog_m["Recall@1"],
-                "GAT first_hit_rank_top10": gat_m["rank_first_hit_top10"],
-                "NoGraph first_hit_rank_top10": nog_m["rank_first_hit_top10"],
-            }
-        )
-    analysis["pairwise_no_graph_vs_gat"] = {
-        "n_queries": len(pair_rows),
-        "n_no_graph_better_recall1": sum(
-            1 for r in pair_rows if r["NoGraph Recall@1"] > r["GAT Recall@1"]
-        ),
-        "n_equal_recall1": sum(1 for r in pair_rows if r["NoGraph Recall@1"] == r["GAT Recall@1"]),
-        "per_query": pair_rows,
-    }
+    if args.reranker_type == "page":
+        # Pairwise comparison: where no-graph beats GAT on Recall@1
+        gat_name = "X-PageRerank (GAT)"
+        nog_name = "X-PageRerank (ablation: no graph)"
+        gat_preds = all_methods[gat_name]
+        nog_preds = all_methods[nog_name]
+        pair_rows = []
+        for i, (gat_pred, nog_pred, gold) in enumerate(zip(gat_preds, nog_preds, all_golds)):
+            gat_m = per_query_first_hit(gat_pred, gold, k=10)
+            nog_m = per_query_first_hit(nog_pred, gold, k=10)
+            pair_rows.append(
+                {
+                    "question_id": qids[i],
+                    "doc_id": doc_ids[i],
+                    "num_support_pages": gat_m["num_support_pages"],
+                    "GAT Recall@1": gat_m["Recall@1"],
+                    "NoGraph Recall@1": nog_m["Recall@1"],
+                    "GAT first_hit_rank_top10": gat_m["rank_first_hit_top10"],
+                    "NoGraph first_hit_rank_top10": nog_m["rank_first_hit_top10"],
+                }
+            )
+        analysis["pairwise_no_graph_vs_gat"] = {
+            "n_queries": len(pair_rows),
+            "n_no_graph_better_recall1": sum(
+                1 for r in pair_rows if r["NoGraph Recall@1"] > r["GAT Recall@1"]
+            ),
+            "n_equal_recall1": sum(1 for r in pair_rows if r["NoGraph Recall@1"] == r["GAT Recall@1"]),
+            "per_query": pair_rows,
+        }
 
     # --- Print tables ---
     print("\n" + "=" * 70)
@@ -917,8 +984,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--num_layers", type=int, default=2)
     p_train.add_argument("--num_heads", type=int, default=4)
     p_train.add_argument("--top_k", type=int, default=20)
+    p_train.add_argument(
+        "--reranker_type",
+        default="page",
+        choices=["page", "region"],
+        help="Reranker architecture: page graph (X-PageRerank) or page+region evidence graph.",
+    )
     p_train.add_argument("--sem_threshold", type=float, default=0.65)
     p_train.add_argument("--adj_max_gap", type=int, default=1)
+    p_train.add_argument("--grid_rows", type=int, default=2, help="Region grid rows for region reranker.")
+    p_train.add_argument("--grid_cols", type=int, default=2, help="Region grid cols for region reranker.")
+    p_train.add_argument(
+        "--cross_page_region_edges",
+        action="store_true",
+        help="Enable region-to-region semantic edges across pages (slower).",
+    )
+    p_train.add_argument("--sem_threshold_region", type=float, default=0.70)
     p_train.add_argument(
         "--graph_preset",
         default="default",
@@ -935,8 +1016,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--checkpoint", default=None)
     p_eval.add_argument("--output_dir", default="results/phase1")
     p_eval.add_argument("--k", type=int, default=10)
+    p_eval.add_argument(
+        "--reranker_type",
+        default="page",
+        choices=["page", "region"],
+        help="Evaluate page graph (X-PageRerank) or page+region evidence graph.",
+    )
     p_eval.add_argument("--sem_threshold", type=float, default=0.65)
     p_eval.add_argument("--adj_max_gap", type=int, default=1)
+    p_eval.add_argument("--grid_rows", type=int, default=2, help="Region grid rows for region reranker.")
+    p_eval.add_argument("--grid_cols", type=int, default=2, help="Region grid cols for region reranker.")
+    p_eval.add_argument(
+        "--cross_page_region_edges",
+        action="store_true",
+        help="Enable region-to-region semantic edges across pages (slower).",
+    )
+    p_eval.add_argument("--sem_threshold_region", type=float, default=0.70)
     p_eval.add_argument(
         "--graph_preset",
         default="default",

@@ -247,6 +247,7 @@ class RegionGraphReranker(nn.Module):
             nn.Dropout(cfg.dropout),
             nn.Linear(cfg.output_dim, 1),
         )
+        self.evidence_head = nn.Linear(cfg.output_dim, 1)
 
         self.lambda_mix = nn.Parameter(torch.tensor(cfg.lambda_mix))
         self.drop = nn.Dropout(cfg.dropout)
@@ -258,6 +259,7 @@ class RegionGraphReranker(nn.Module):
         query_vector: torch.Tensor,      # (D,)
         page_numbers: List[int],
         stage1_scores: Optional[torch.Tensor] = None,  # (K,)
+        return_aux: bool = False,
     ) -> torch.Tensor:
         """
         Returns (K,) final page scores.
@@ -309,7 +311,15 @@ class RegionGraphReranker(nn.Module):
         else:
             final = delta
 
-        return final   # (K,)
+        if not return_aux:
+            return final   # (K,)
+
+        region_repr = h[K:K + K * R]                   # (K*R, output_dim)
+        evidence_scores = self.evidence_head(region_repr).squeeze(-1)  # (K*R,)
+        return final, {
+            "evidence_scores": evidence_scores,
+            "page_delta": delta,
+        }
 
     def extract_regions(
         self,
@@ -330,3 +340,27 @@ class RegionGraphReranker(nn.Module):
             )   # (R, D)
             regions.append(r_vecs)
         return torch.cat(regions, dim=0)   # (K*R, D)
+
+    def rerank_from_multivector(
+        self,
+        page_embs: torch.Tensor,            # (K, T, D)
+        query_embs: torch.Tensor,           # (1, T, D)
+        page_numbers: List[int],
+        stage1_scores: Optional[torch.Tensor] = None,  # (K,)
+        return_aux: bool = False,
+    ) -> torch.Tensor:
+        """
+        Convenience wrapper for cached ColPali tensors.
+        """
+        page_vectors = page_embs.float().mean(dim=1)               # (K, D)
+        query_vector = query_embs.float().squeeze(0).mean(dim=0)   # (D,)
+        region_vectors = self.extract_regions(page_embs.float())    # (K*R, D)
+
+        return self.forward(
+            page_vectors=page_vectors,
+            region_vectors=region_vectors,
+            query_vector=query_vector,
+            page_numbers=page_numbers,
+            stage1_scores=stage1_scores,
+            return_aux=return_aux,
+        )

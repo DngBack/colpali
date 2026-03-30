@@ -1,23 +1,30 @@
-# X-PageRerank: Detailed Paper-Style Technical Report (Multi-Seed)
+# From Pages to Evidence: Query-Conditioned Heterogeneous Graph Retrieval for Multi-Page Document QA
 
 ## Abstract
 
-Visual late-interaction document retrievers (e.g., ColPali-style models) are strong at page-level matching but remain limited for cross-page evidence composition. We present and evaluate **X-PageRerank**, a lightweight stage-2 reranking framework that performs query-conditioned graph reasoning over top-k retrieved pages. Unlike corpus-level graph retrieval frameworks, our approach builds a local graph at query time only, making it practical for integration with existing retrieval pipelines.  
+Multi-page document question answering often requires composing evidence distributed across text blocks, figures, captions, tables, and key-value regions spanning multiple pages. Standard late-interaction retrievers score pages independently and therefore underperform when support is relational rather than page-local. We reformulate retrieval as **query-conditioned heterogeneous evidence graph retrieval**: stage-1 returns top-k pages, then stage-2 decomposes them into typed evidence units and performs typed message passing over semantic and structural relations at query time.
 
-In this repository, we run a strict disjoint-split protocol and a 5-seed evaluation (`42..46`) on MP-DocVQA-derived caches. Aggregated results show consistent gains from graph reranking: **Recall@1 +6.82 points**, **MRR@10 +5.60 points**, and **nDCG@10 +4.34 points** over stage-1 ColPali baseline (mean across 5 seeds). We provide complete reproducibility details, hyperparameters, and commands.
+This report contains two complementary parts: (1) an upgraded method formulation ("from page reranking to evidence-graph retrieval"), and (2) reproducible multi-seed results from the current page-graph implementation in this repository. The practical deployment constraint is preserved: graph construction remains local to top-k candidates at query time (no corpus-wide graph index).
 
 ---
 
 ## 1) Problem Setting and Motivation
 
-For a query `q` and a multi-page document, stage-1 retrieval returns top-k page candidates. The challenge is that evidence for a question can be distributed across multiple pages. Pure page-wise scoring often misses this composition signal.
+For a query `q` and a multi-page document `D={p_1,...,p_n}`, stage-1 retrieval returns top-k page candidates. The key observation is that answer support is often **not page-atomic**: it is distributed, typed, and relational (e.g., header on one page, figure on another, caption elsewhere).
+
+Let `E={e_1,...,e_m}` be latent evidence units extracted from candidate pages. The objective is no longer only "rank pages by marginal similarity". Instead, infer a support subgraph:
+
+`G_q^* \subseteq G(E,R)`
+
+that best explains the query under heterogeneous relations `R`.
 
 We cast reranking as:
 
 1. Retrieve top-k pages with a visual late-interaction retriever.
-2. Build a query-conditioned page graph over those candidates.
-3. Run GAT message passing to refine page representations.
-4. Produce reranked scores and evaluate retrieval/support-page metrics.
+2. Decompose pages into typed evidence units.
+3. Build a query-conditioned heterogeneous evidence graph over those units.
+4. Run typed message passing to infer evidence relevance and page support.
+5. Aggregate evidence-level decisions into page ranking and downstream QA support.
 
 This keeps stage-1 unchanged while adding cross-page reasoning where it matters most (query-time top-k set).
 
@@ -25,19 +32,19 @@ This keeps stage-1 unchanged while adding cross-page reasoning where it matters 
 
 ## 2) Positioning vs Prior Graph Retrieval Work
 
-X-PageRerank is intentionally scoped as a **drop-in post-retrieval module**:
+The method is intentionally scoped as a **drop-in post-retrieval module**:
 
 - Backbone retrieval stays fixed (ColPali-style late interaction).
-- Graph is **local** to top-k candidates (no corpus-wide component graph).
-- Focus is practical cross-page reranking for document QA pipelines.
+- Graph is **local** to top-k candidates at query time (no corpus-wide component graph).
+- Focus is practical cross-page evidence composition for document QA pipelines.
 
 This is consistent with the repo design direction captured in `docs/idea.md` and subsequent experiment reports.
 
 ---
 
-## 3) Method
+## 3) Upgraded Method: Query-Conditioned Heterogeneous Evidence Graph Retrieval
 
-## 3.1 Stage-1 Retrieval and Inputs
+## 3.1 Stage-1 Candidate Generation (unchanged strength)
 
 For each sample:
 
@@ -47,32 +54,119 @@ For each sample:
 - Support mask labels: `*_mask.pt`
 - Metadata (`question_id`, `doc_id`, `page_numbers`) in `meta.json`
 
-All are stored as a cached `RerankDataset`.
+All are stored as a cached `RerankDataset`. This preserves the deployment story: stage-1 remains fixed and strong.
 
-## 3.2 Graph Construction
+## 3.2 Evidence Unit Extraction (new core step)
 
-From top-k retrieved pages, build an evidence graph with:
+For top-k pages, extract structured units and represent them as typed nodes:
 
-- semantic edges (embedding similarity),
-- page adjacency edges (nearby page indices),
-- optional query-node conditioning.
+- `page`
+- `text_block`
+- `header_or_section_title`
+- `figure_region`
+- `caption`
+- `table_region`
+- `key_value_field`
+- optional `image_patch`
+- optional explicit `query` node
 
-The current training/eval path supports graph sparsification by preset:
+Node features combine multimodal content and structure:
 
-- `graph_preset=default`: use CLI values directly
-- `graph_preset=sparse-graph`: enforce
-  - `sem_threshold = max(sem_threshold, 0.75)`
-  - `adj_max_gap = min(adj_max_gap, 1)`
+- visual region embedding
+- OCR/text embedding
+- layout coordinates
+- page index and section position
+- stage-1 page score
+- node-type embedding
+- document-structure metadata
 
-## 3.3 Reranker and Objective
+## 3.3 Query-Conditioned Heterogeneous Graph Construction
 
-The reranker uses a GAT module (`PageGATReranker`) and optimizes support-page ranking:
+Construct `G_q=(V,E)` over extracted units with typed edges:
 
-- listwise softmax cross-entropy over top-k pages,
-- auxiliary pairwise margin loss (hard negative style),
-- checkpoint selection by validation `Recall@5` with early stopping.
+Structural edges:
 
-## 3.4 Evaluation Outputs
+- same page
+- adjacent pages
+- same or neighboring section
+- caption <-> figure
+- caption <-> table
+- header <-> covered blocks
+- key <-> value
+- same table row/column
+
+Semantic edges:
+
+- embedding similarity neighbors
+- lexical/entity overlap
+- OCR overlap
+- cross-reference links ("Fig. 3", "Table 2", etc.)
+
+Query-conditioned edges:
+
+- query <-> node similarity edges
+- query-conditioned gating over all relation channels
+
+Graph sparsification is required for robustness:
+
+- top-M semantic neighbors per node
+- page-distance constraints
+- thresholded cross-reference matching
+- learned edge gating / edge dropout
+
+## 3.4 Encoder: Typed Message Passing (replace plain page-only GAT)
+
+Use a heterogeneous relational attention encoder (relational GAT or heterogeneous graph transformer), not a relation-agnostic page-only GAT.
+
+For layer `l`:
+
+`h_i^(l+1) = LayerNorm(h_i^(l) + sum_{r in R} Attn_r(h_i^(l), {h_j^(l):(j->i,r) in E}))`
+
+with:
+
+- relation-specific projections
+- edge-type embeddings
+- query-conditioned attention bias
+- residual connection and normalization
+- edge dropout
+
+## 3.5 Outputs: Evidence + Page (not page-only)
+
+Predict at least two heads:
+
+1. Evidence relevance score for each node `e_i`:
+   - `s_i^evidence = f_e(h_i)`
+2. Page support score from evidence aggregation:
+   - `s_p^page = f_p(Agg({h_i : e_i in p}))`
+
+Optional third head:
+
+3. Support-subgraph coherence/confidence for selected evidence sets or paths.
+
+This produces richer supervision and stronger interpretability than page-only reranking.
+
+## 3.6 Training Objective (multi-term)
+
+Total loss:
+
+`L = lambda_1 L_page + lambda_2 L_evidence + lambda_3 L_coh + lambda_4 L_distill`
+
+where:
+
+- `L_page`: listwise page-ranking loss (keeps comparability with current pipeline)
+- `L_evidence`: node-level evidence supervision (binary/focal; weak labels if region labels absent)
+- `L_coh`: connectivity/coherence objective for support subgraph consistency
+- `L_distill`: distillation from stage-1 scores for stability and retrieval prior preservation
+
+## 3.7 Theoretical Motivation (lightweight but explicit)
+
+Proposition-style narrative to include in paper:
+
+1. Independent page scoring is suboptimal under compositional evidence.
+2. If support units form a connected relational subgraph, message passing increases support-vs-distractor separability.
+3. Evidence-aggregated page scoring is at least as expressive as page-only scoring and strictly more expressive when evidence is sparse/localized.
+
+## 3.8 Evaluation Outputs
 
 Per run, `phase1_results.json` stores:
 
@@ -80,11 +174,91 @@ Per run, `phase1_results.json` stores:
 - support-page metrics (`Coverage@k`, `AllSupportHit@k`, `SupportF1@k`),
 - per-query and pairwise analysis (`no-graph` vs `GAT`).
 
+For the upgraded method, add evidence-level and end-task metrics:
+
+- `EvidenceRecall@k`
+- support-subgraph F1 / path accuracy
+- region-grounding accuracy
+- QA metrics (`EM`, `F1`, `ANLS` depending on benchmark)
+- efficiency (`graph build time`, `latency/query`, `memory/query`, scaling vs top-k)
+
 ---
 
-## 4) Experimental Protocol Used in This Workspace
+## 4) Scientific Claims (updated)
 
-## 4.1 Data and Split Strategy
+1. Multi-page document QA is an evidence-composition problem, not only page ranking.
+2. Cross-page support is heterogeneous (text, figures, captions, tables, key-value fields) and should be modeled with typed nodes/edges.
+3. Query-conditioned heterogeneous graph reasoning better recovers latent support structure than independent page scoring and non-graph rerankers.
+4. Query-time local graph construction preserves practical deployment.
+
+---
+
+## 5) Experimental Design for the A*-level Version
+
+Datasets:
+
+- Primary: MP-DocVQA
+- Secondary: DUDE
+- Optional third long-document benchmark
+
+Hard cross-page subset (recommended):
+
+- >=2 support pages
+- page distance > 1
+- figure/caption split
+- table/header or table/note split
+- comparison/aggregation/cross-reference question types
+
+Report by strata:
+
+- single-page vs multi-page
+- 2-hop vs 3+ hop
+- text-only vs text+figure vs text+table
+- near-page vs long-range gap
+- explicit cross-reference vs implicit composition
+
+Baselines/ablations (minimum set):
+
+- stage-1 retriever only
+- MLP/transformer stage-2 rerankers
+- no-graph vs homogeneous graph vs heterogeneous graph
+- remove query node
+- remove structural/semantic edge groups
+- top-k sensitivity (`10/20/40`)
+- graph density and depth sensitivity
+- loss-term ablations (`L_page` only, +`L_evidence`, +`L_coh`, +/-`L_distill`)
+
+---
+
+## 6) Implementation Roadmap in This Repository
+
+Phase A (framing-first, minimal code delta):
+
+- keep current page graph pipeline
+- adopt upgraded thesis and claims
+- add stronger ablations, QA metrics, latency, hard subset protocol
+
+Phase B (first algorithmic upgrade):
+
+- add typed evidence nodes (`text`, `caption`, `figure`, `table`)
+- move from page-only graph to heterogeneous graph
+
+Phase C (stronger supervision):
+
+- add evidence labels/weak labels and coherence objective
+
+Phase D (final paper package):
+
+- multi-dataset validation
+- hard multi-hop benchmark split
+- full end-task QA and efficiency study
+- qualitative failure taxonomy
+
+---
+
+## 7) Experimental Protocol Used in This Workspace (Current Implemented System)
+
+## 7.1 Data and Split Strategy
 
 - Candidate cache: `cache/mpdoc_val_full` (observed `meta.json` length: **4801**).
 - Multi-seed splitting is done by `doc_id` groups with question disjointness checks:
@@ -109,7 +283,7 @@ Mean +/- std:
 - Val: `714.4 +/- 29.6`
 - Test: `715.6 +/- 47.5`
 
-## 4.2 Multi-Seed Runner Hyperparameters (actual driver)
+## 7.2 Multi-Seed Runner Hyperparameters (actual driver)
 
 From `experiments/run_phase1_multi_seed.py`:
 
@@ -122,7 +296,7 @@ From `experiments/run_phase1_multi_seed.py`:
 - Eval k: `10`
 - Aggregation: enabled by default (unless `--no_aggregate`)
 
-## 4.3 Train/Eval Core Hyperparameters (pipeline defaults)
+## 7.3 Train/Eval Core Hyperparameters (pipeline defaults)
 
 From `experiments/run_phase1.py` + `experiments/train/train_reranker.py`:
 
@@ -139,7 +313,7 @@ From `experiments/run_phase1.py` + `experiments/train/train_reranker.py`:
   - `sem_threshold=0.65`, `adj_max_gap=1`
   - with `sparse-graph`, effective graph values are clamped as above.
 
-## 4.4 Cache-Build Hyperparameters (OOM-safe)
+## 7.4 Cache-Build Hyperparameters (OOM-safe)
 
 Important options (from `run_phase1 cache`):
 
@@ -152,12 +326,12 @@ Important options (from `run_phase1 cache`):
 
 ---
 
-## 5) 5-Seed Aggregated Results (Latest Output)
+## 8) 5-Seed Aggregated Results (Latest Output)
 
 Source: `multi_seed_runs/mpdoc_val_disjoint/aggregated_report.md`  
 Runs: **5** | Seeds: **[42, 43, 44, 45, 46]**
 
-## 5.1 Retrieval (mean +/- std)
+## 8.1 Retrieval (mean +/- std)
 
 | Method | Recall@1 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |
 |---|---:|---:|---:|---:|---:|
@@ -173,7 +347,7 @@ Improvements of X-PageRerank (GAT) over ColPali stage-1:
 - `MRR@10`: `+0.0560` (+5.60 points)
 - `nDCG@10`: `+0.0434` (+4.34 points)
 
-## 5.2 Support-page Metrics (mean +/- std)
+## 8.2 Support-page Metrics (mean +/- std)
 
 | Method | Coverage@5 | Coverage@10 | AllSupportHit@10 | SupportF1@10 |
 |---|---:|---:|---:|---:|
@@ -187,7 +361,7 @@ Interpretation:
 - Coverage@5 improves with graph reranking.
 - `AllSupportHit@10 = 0` is expected when evaluation subsets mostly contain single-support-page queries; this metric only becomes informative with multi-support samples.
 
-## 5.3 Pairwise Stability Signal
+## 8.3 Pairwise Stability Signal
 
 From aggregated pairwise analysis (`no-graph` vs `GAT`, Recall@1):
 
@@ -199,9 +373,9 @@ This indicates GAT is generally robust, with a minority subset where no-graph st
 
 ---
 
-## 6) End-to-End Reproducibility: How to Run
+## 9) End-to-End Reproducibility: How to Run
 
-## 6.1 Recommended One-Command 5-seed pipeline
+## 9.1 Recommended One-Command 5-seed pipeline
 
 ```bash
 cd /home/admin1/Desktop/colpali
@@ -224,7 +398,7 @@ This will:
    - `multi_seed_runs/mpdoc_val_disjoint/aggregated_results.json`
    - `multi_seed_runs/mpdoc_val_disjoint/aggregated_report.md`
 
-## 6.2 Run aggregation separately
+## 9.2 Run aggregation separately
 
 ```bash
 python3 -m experiments.summarize_phase1_multi_seed \
@@ -237,7 +411,7 @@ Optional:
 
 - `--include_raw_values` to store per-seed metric arrays in JSON.
 
-## 6.3 If candidate cache does not exist yet
+## 9.3 If candidate cache does not exist yet
 
 ```bash
 export PARQUET_DIR="/absolute/path/to/MP-DocVQA/parquet/data"
@@ -256,11 +430,11 @@ python3 -m experiments.run_phase1 cache \
   --maxsim_doc_chunk 16
 ```
 
-Then run the 5-seed pipeline in section 6.1.
+Then run the 5-seed pipeline in section 9.1.
 
 ---
 
-## 7) Practical Notes and Failure Modes
+## 10) Practical Notes and Failure Modes
 
 1. Placeholder path confusion  
    Use a real cache folder path. `--candidate_cache /đường/dẫn/...` is only a placeholder and will fail (`missing meta.json`).
@@ -276,7 +450,7 @@ Then run the 5-seed pipeline in section 6.1.
 
 ---
 
-## 8) Limitations and Next Steps
+## 11) Limitations and Next Steps
 
 - Current summary is retrieval-centered; full QA EM/F1 evaluation is not included in this report.
 - To make `AllSupportHit@k` informative, curate a stronger multi-support subset.
@@ -285,6 +459,6 @@ Then run the 5-seed pipeline in section 6.1.
 
 ---
 
-## 9) Conclusion
+## 12) Conclusion
 
-Across 5 random seeds with strict disjoint splitting, X-PageRerank (GAT) consistently improves over stage-1 and no-graph alternatives on top-ranking quality (`Recall@1`, `MRR@10`, `nDCG@10`) while preserving a practical drop-in pipeline. The method is reproducible with one command in this repository and provides a solid baseline for future cross-page evidence composition research.
+Across 5 random seeds with strict disjoint splitting, the current page-graph implementation (X-PageRerank/GAT) consistently improves over stage-1 and no-graph alternatives on top-ranking quality (`Recall@1`, `MRR@10`, `nDCG@10`) while preserving a practical drop-in pipeline. The upgraded method in this report reframes the task from page reranking to query-conditioned heterogeneous evidence-graph retrieval, providing the target formulation for the next implementation phase.
