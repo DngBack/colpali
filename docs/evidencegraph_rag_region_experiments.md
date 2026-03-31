@@ -203,3 +203,73 @@ Từ `multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_report_with_perc
 - **Ngắt tay (KeyboardInterrupt)** giữa các cấu hình trong một sweep dài: các run **đã hoàn thành** trước khi dừng vẫn hợp lệ (ghi nhận trong `docs/experiment_note_2026-03-30_region_multiseed.md`).
 - **Khớp cache**: `--candidate_cache` phải là thư mục thật có `meta.json`; `top_k` khi train/eval khớp lúc build cache.
 - Một số file dưới `multi_seed_runs/` có thể bị công cụ IDE chặn đọc trực tiếp; metric vẫn truy cập qua shell hoặc JSON như trên.
+
+---
+
+## 8. Checklist để đạt mức paper submission chắc tay hơn
+
+Mục tiêu của checklist này là tách rõ:
+
+- cái gì đã đủ để viết paper,
+- cái gì còn thiếu nếu muốn claim mạnh hơn,
+- và thứ tự ưu tiên để không bị sa vào chạy thí nghiệm lan man.
+
+### 8.1. Must-have trước khi submit
+
+1. Xác nhận lại claim chính của paper. Nên chốt một claim hẹp, có thể bảo vệ tốt, ví dụ: `query-conditioned local evidence graph improves top-rank reranking on multi-page document QA`. Tránh claim quá rộng kiểu “đã giải quyết cross-page reasoning tổng quát” nếu chưa có QA end-to-end và multi-support subset đủ mạnh.
+
+2. Chốt protocol chính thức cho tất cả số liệu. Cần cố định seed, cố định family split, cố định quy tắc chọn config, và ghi rõ run nào là baseline, run nào là tuned region model.
+
+3. Bổ sung ablation tối thiểu để chứng minh lợi ích của graph. Tối thiểu nên có `stage-1`, `+ MLP reranker`, `page graph` không region, `page + region`, `page + region + typed nodes`, và `page + region + typed nodes + cross-page edges` nếu có.
+
+4. Làm ablation theo từng thành phần kiến trúc. Cần kiểm tra bỏ `query node`, bỏ `typed nodes`, bỏ `semantic edges`, bỏ `adjacency edges`, đổi `grid_rows x grid_cols` giữa `2x2` và `3x3`, sweep `sem_threshold_region`, và sweep `lambda_mix` cùng `warmup`.
+
+5. Chứng minh tính ổn định theo nhiều seed. Báo cáo `mean ± std`, thêm median hoặc percentile nếu cần, và nếu có thể thì thêm paired comparison theo từng seed.
+
+6. Thêm kiểm định thống kê tối thiểu. Dùng bootstrap CI hoặc paired test trên per-query/per-seed scores, rồi báo cáo rõ chênh lệch mean và độ tin cậy.
+
+7. Làm rõ tính hợp lệ của metric support. Báo cáo phân bố `num_support_pages`, nêu rõ `AllSupportHit@k = 0` hiện tại là do split chủ yếu single-support hay do pipeline, và nếu muốn dùng metric này như claim thì cần một multi-support subset thật sự.
+
+### 8.2. Should-have để paper thuyết phục hơn
+
+1. Thêm end-to-end QA metrics. Nên có `EM`, `F1`, hoặc `ANLS` tùy benchmark; nếu pipeline chưa sinh câu trả lời thì ít nhất phải có downstream proxy rõ ràng để chứng minh reranking có ích cho QA thật.
+
+2. Thêm dataset thứ hai. Ít nhất một benchmark nữa ngoài MP-DocVQA, ví dụ DUDE, để chứng minh phương pháp không chỉ khớp riêng một split.
+
+3. Thêm hard subset analysis. Nên tách multi-page vs single-page, page-distance lớn vs nhỏ, question có cross-reference/bảng/figure/caption, và nếu có thể thì 2-hop vs 3+ hop.
+
+4. Thêm latency / memory / throughput. Cần đo graph build time, inference latency/query, và peak memory theo `top_k` để giữ câu chuyện “drop-in post-retrieval module”.
+
+5. Thêm qualitative case studies. Nên có 3 đến 5 ví dụ thành công, 3 đến 5 ví dụ thất bại, và một vài hình minh họa top-k pages cùng evidence graph.
+
+### 8.3. Nice-to-have nếu muốn lên level cao hơn
+
+1. So sánh với thêm baseline mạnh hơn. Có thể là một reranker transformer không graph, một biến thể heterogeneous graph khác, hoặc một baseline reasoning/graph retrieval gần với literature hơn.
+
+2. Thêm phân tích lỗi có taxonomy. Nên gom lỗi theo nhóm như false positive do OCR noise, false negative do support phân tán, fail vì cross-page link yếu, và fail vì query không cần graph.
+
+3. Báo cáo khả năng tổng quát hóa. Nếu protocol cho phép, hãy train trên một split và test trên split khác, hoặc ít nhất trình bày cross-seed generalization rõ hơn.
+
+4. Thêm calibration hoặc confidence analysis. Có thể xem phân phối score của page support và độ tin cậy khi graph giúp hay làm hỏng ranking.
+
+### 8.4. Decision gate trước submission
+
+Nếu muốn tự hỏi “đã đủ paper chưa?”, dùng gate sau:
+
+1. Nếu chỉ có retrieval metric và support coverage thì bài báo đang ở mức `good technical report`.
+2. Nếu có retrieval, ablation đầy đủ, và multi-seed ổn định thì bài báo đã ở mức `submission được`.
+3. Nếu có thêm QA end-to-end, dataset thứ hai, hard subset, và efficiency thì bài báo ở mức `chắc tay hơn nhiều`.
+
+### 8.5. Ưu tiên chạy tiếp theo
+
+Thứ tự mình khuyên là:
+
+1. Chốt ablation table chính thức.
+2. Chạy multi-support subset hoặc dataset thứ hai.
+3. Bổ sung QA metrics.
+4. Đo latency / memory.
+5. Làm case study và failure analysis.
+
+### 8.6. Kết luận thực dụng
+
+Hiện tại, kết quả đã đủ để viết phần `method` và `retrieval experiment` của paper. Điểm còn thiếu để submission `chắc tay` là evidence-level validation thật sự, ablation đầy đủ, một benchmark bổ sung hoặc hard subset, và end-to-end QA metrics. Nói ngắn gọn: **paper có thể viết, nhưng để paper mạnh thì vẫn nên làm thêm một vòng thí nghiệm theo checklist này**.
