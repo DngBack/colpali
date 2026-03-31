@@ -1,0 +1,317 @@
+{
+  "battery_root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery",
+  "runs": [
+    {
+      "slug": "page_gat_default",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/page_gat_default/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "X-PageRerank (GAT)",
+      "primary_Recall_1": {
+        "mean": 0.5808154202290275,
+        "std": 0.02115111839719169
+      },
+      "primary_Recall_5": {
+        "mean": 0.9203951298633894,
+        "std": 0.007663637216086696
+      },
+      "primary_MRR_10": {
+        "mean": 0.7272127096495076,
+        "std": 0.013230567788293627
+      },
+      "primary_nDCG_10": {
+        "mean": 0.793712846288391,
+        "std": 0.01001578511718307
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.5388800551156013,
+        "std": 0.02040053848051578
+      },
+      "page_nograph_recall1": {
+        "mean": 0.5816182933612948,
+        "std": 0.01680403135426123
+      },
+      "page_gat_recall1": {
+        "mean": 0.5808154202290275,
+        "std": 0.02115111839719169
+      }
+    },
+    {
+      "slug": "page_gat_sparse_graph",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/page_gat_sparse_graph/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "X-PageRerank (GAT)",
+      "primary_Recall_1": {
+        "mean": 0.5861509349132107,
+        "std": 0.028840244993422682
+      },
+      "primary_Recall_5": {
+        "mean": 0.9146011208481759,
+        "std": 0.012637597523719034
+      },
+      "primary_MRR_10": {
+        "mean": 0.7285318162390603,
+        "std": 0.019388732276884646
+      },
+      "primary_nDCG_10": {
+        "mean": 0.7945371235963529,
+        "std": 0.014741440175471483
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.5476017118593872,
+        "std": 0.0034575192875881838
+      },
+      "page_nograph_recall1": {
+        "mean": 0.578385996015039,
+        "std": 0.021870684421883835
+      },
+      "page_gat_recall1": {
+        "mean": 0.5861509349132107,
+        "std": 0.028840244993422682
+      }
+    },
+    {
+      "slug": "region_grid_1x1",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_grid_1x1/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "EvidenceGraph-RAG (page+region)",
+      "primary_Recall_1": {
+        "mean": 0.6355894706802223,
+        "std": 0.017959828399566148
+      },
+      "primary_Recall_5": {
+        "mean": 0.977554312406375,
+        "std": 0.007573581241093412
+      },
+      "primary_MRR_10": {
+        "mean": 0.7934351556730582,
+        "std": 0.01787019555459454
+      },
+      "primary_nDCG_10": {
+        "mean": 0.8458220252219343,
+        "std": 0.013798034888734507
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.5334066511633764,
+        "std": 0.01001365791546919
+      }
+    },
+    {
+      "slug": "region_grid_3x3",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_grid_3x3/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "EvidenceGraph-RAG (page+region)",
+      "primary_Recall_1": {
+        "mean": 0.6038421868584783,
+        "std": 0.04614307256544153
+      },
+      "primary_Recall_5": {
+        "mean": 0.9479586672828866,
+        "std": 0.044063174655255576
+      },
+      "primary_MRR_10": {
+        "mean": 0.7582687346818778,
+        "std": 0.04834223632059675
+      },
+      "primary_nDCG_10": {
+        "mean": 0.8182438649028324,
+        "std": 0.037878917541355736
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.5443357057022642,
+        "std": 0.005429900839619544
+      }
+    },
+    {
+      "slug": "region_lambda_fixed_mid",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_lambda_fixed_mid/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "EvidenceGraph-RAG (page+region)",
+      "primary_Recall_1": {
+        "mean": 0.5976576552614127,
+        "std": 0.03589077029854959
+      },
+      "primary_Recall_5": {
+        "mean": 0.9507070000010496,
+        "std": 0.032358958352758066
+      },
+      "primary_MRR_10": {
+        "mean": 0.7540098497531795,
+        "std": 0.038954847491280524
+      },
+      "primary_nDCG_10": {
+        "mean": 0.8150836795794003,
+        "std": 0.030480022102641488
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.5399761120587282,
+        "std": 0.011742412257192626
+      }
+    },
+    {
+      "slug": "region_main_default",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_main_default/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "EvidenceGraph-RAG (page+region)",
+      "primary_Recall_1": {
+        "mean": 0.6153021785951326,
+        "std": 0.032233158017821784
+      },
+      "primary_Recall_5": {
+        "mean": 0.9584339196660148,
+        "std": 0.03252507126633793
+      },
+      "primary_MRR_10": {
+        "mean": 0.7715293576480711,
+        "std": 0.038415914743151286
+      },
+      "primary_nDCG_10": {
+        "mean": 0.8286314734968713,
+        "std": 0.030152403737568747
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.5467654414525795,
+        "std": 0.008191074328049481
+      }
+    },
+    {
+      "slug": "region_sparse_graph",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_sparse_graph/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "EvidenceGraph-RAG (page+region)",
+      "primary_Recall_1": {
+        "mean": 0.6233268826698365,
+        "std": 0.0277440803299287
+      },
+      "primary_Recall_5": {
+        "mean": 0.9684118121536841,
+        "std": 0.02509829065508188
+      },
+      "primary_MRR_10": {
+        "mean": 0.7803816402355779,
+        "std": 0.029569903976110642
+      },
+      "primary_nDCG_10": {
+        "mean": 0.8356319516272921,
+        "std": 0.02315892584423702
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.541503642535303,
+        "std": 0.008783280334218237
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.542184787410269,
+        "std": 0.011772075581300482
+      }
+    },
+    {
+      "slug": "region_split_70_15_15",
+      "aggregated_results": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_split_70_15_15/aggregated_results.json",
+      "n_seeds": 5,
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "primary_method": "EvidenceGraph-RAG (page+region)",
+      "primary_Recall_1": {
+        "mean": 0.6764064976392798,
+        "std": 0.04357537103938049
+      },
+      "primary_Recall_5": {
+        "mean": 0.9861112251192182,
+        "std": 0.009007461524580837
+      },
+      "primary_MRR_10": {
+        "mean": 0.8235959956499567,
+        "std": 0.019954955749906546
+      },
+      "primary_nDCG_10": {
+        "mean": 0.8687419131077846,
+        "std": 0.014600301637951191
+      },
+      "baseline_colpali_stage1_recall1": {
+        "mean": 0.5462401006431803,
+        "std": 0.02550598058230162
+      },
+      "baseline_mlp_recall1": {
+        "mean": 0.530062516821186,
+        "std": 0.02861563058422859
+      }
+    }
+  ]
+}

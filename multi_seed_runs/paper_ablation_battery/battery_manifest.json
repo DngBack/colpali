@@ -1,0 +1,118 @@
+{
+  "candidate_cache": "/home/admin1/Desktop/colpali/cache/mpdoc_val_full",
+  "battery_root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery",
+  "seeds": "42,43,44,45,46",
+  "runs": [
+    {
+      "slug": "page_gat_default",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/page_gat_default",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "page",
+        "graph_preset": "default"
+      }
+    },
+    {
+      "slug": "page_gat_sparse_graph",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/page_gat_sparse_graph",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "page",
+        "graph_preset": "sparse-graph"
+      }
+    },
+    {
+      "slug": "region_main_default",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_main_default",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "region",
+        "graph_preset": "default",
+        "grid_rows": 2,
+        "grid_cols": 2,
+        "sem_threshold_region": 0.7,
+        "lambda_mix_start": 0.15,
+        "lambda_mix_end": 0.55,
+        "lambda_mix_warmup_steps": 1200
+      }
+    },
+    {
+      "slug": "region_sparse_graph",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_sparse_graph",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "region",
+        "graph_preset": "sparse-graph",
+        "grid_rows": 2,
+        "grid_cols": 2,
+        "sem_threshold_region": 0.7,
+        "lambda_mix_start": 0.15,
+        "lambda_mix_end": 0.55,
+        "lambda_mix_warmup_steps": 1200
+      }
+    },
+    {
+      "slug": "region_grid_1x1",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_grid_1x1",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "region",
+        "graph_preset": "default",
+        "grid_rows": 1,
+        "grid_cols": 1,
+        "sem_threshold_region": 0.7,
+        "lambda_mix_start": 0.15,
+        "lambda_mix_end": 0.55,
+        "lambda_mix_warmup_steps": 1200
+      }
+    },
+    {
+      "slug": "region_grid_3x3",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_grid_3x3",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "region",
+        "graph_preset": "default",
+        "grid_rows": 3,
+        "grid_cols": 3,
+        "sem_threshold_region": 0.7,
+        "lambda_mix_start": 0.15,
+        "lambda_mix_end": 0.55,
+        "lambda_mix_warmup_steps": 1200
+      }
+    },
+    {
+      "slug": "region_lambda_fixed_mid",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_lambda_fixed_mid",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "region",
+        "graph_preset": "default",
+        "grid_rows": 2,
+        "grid_cols": 2,
+        "sem_threshold_region": 0.7,
+        "lambda_mix_start": 0.35,
+        "lambda_mix_end": 0.35,
+        "lambda_mix_warmup_steps": 1200
+      }
+    },
+    {
+      "slug": "region_split_70_15_15",
+      "root": "/home/admin1/Desktop/colpali/multi_seed_runs/paper_ablation_battery/region_split_70_15_15",
+      "status": "ran",
+      "overrides": {
+        "reranker_type": "region",
+        "graph_preset": "default",
+        "grid_rows": 2,
+        "grid_cols": 2,
+        "sem_threshold_region": 0.7,
+        "lambda_mix_start": 0.15,
+        "lambda_mix_end": 0.55,
+        "lambda_mix_warmup_steps": 1200,
+        "train_ratio": 0.7,
+        "val_ratio": 0.15,
+        "test_ratio": 0.15
+      }
+    }
+  ]
+}
