@@ -2,74 +2,207 @@
 
 ## Abstract
 
-Multi-page document question answering requires retrieving supporting pages under visual, textual, and layout variation. In practical pipelines, strong stage-1 retrievers still rank pages mostly independently and can miss cross-region evidence interactions. We present a deployable two-stage framework, **EvidenceGraph-RAG**, where stage-1 query/page representations are cached once and stage-2 performs query-conditioned region-graph reranking over top-k candidates. We report a reproducible 5-seed study on MP-DocVQA-derived cached candidates with strict document/question disjoint splits. In the current run setting (`train/val/test = 12/8/80`, seeds 42–46), EvidenceGraph-RAG improves over `ColPali (stage-1)` by +6.23 points on Recall@1, +7.26 points on Recall@5, +7.01 points on MRR@10, and +5.53 points on nDCG@10. We provide detailed setup, command-level reproducibility, and a prioritized experimental completion plan for A* conference submission quality.
+Multi-page document question answering requires retrieving support pages that may contain evidence spread across regions, figures, tables, captions, and neighboring pages. In practical retrieval pipelines, a strong stage-1 retriever still ranks pages mostly independently, which makes it difficult to exploit evidence relations inside a document. We present **EvidenceGraph-RAG**, a two-stage reranking framework that keeps stage-1 retrieval cached and trains a lightweight graph reranker over the top-k candidates. The reranker builds a query-conditioned evidence graph with page nodes, region nodes, heuristic typed evidence nodes, and a query node, then performs multi-head graph attention to refine page ordering.
+
+On MP-DocVQA-derived cached candidates with document-disjoint multi-seed evaluation (`seed = 42..46`), the current best region setting improves over `ColPali (stage-1)` by **+6.23 Recall@1**, **+7.26 Recall@5**, **+7.01 MRR@10**, and **+5.53 nDCG@10**. The results show that structured region-aware reranking can substantially improve early-rank retrieval quality while preserving the deployment-friendly top-k cached retrieval pipeline.
+
+This draft is intentionally written as a paper-ready technical report: the method is specified at implementation level, the experiment protocol is reproducible from the repository command line, and remaining gaps for an A* submission are called out explicitly.
 
 ## 1. Introduction
 
-Retrieval is a central bottleneck in document QA systems. In multi-page settings, support can be distributed across different regions and pages, while late-interaction retrievers typically produce page-level independent rankings. This gap motivates a second-stage reranker that explicitly models evidence relations while preserving practical deployment constraints.
+Retrieval is the first bottleneck in document QA systems. In multi-page settings, the answer may be supported by one page, but the evidence often depends on local layout cues, nearby pages, or a combination of text blocks, captions, tables, and figures. Late-interaction retrievers such as ColPali are strong at matching query-page similarity, but they still treat retrieved pages largely independently after the first ranking step.
 
-This work is scoped to a production-friendly setting:
+EvidenceGraph-RAG addresses this gap with a practical reranking layer:
 
-1. Stage-1 embeddings and scores are precomputed and frozen in cache.
-2. Stage-2 rerankers operate only on top-k candidate pages.
-3. Training and evaluation are done with strict split reproducibility.
+1. Stage-1 retrieval is computed once and cached.
+2. A query-conditioned graph is constructed over the top-k pages.
+3. Graph attention propagates information between pages, subpage regions, and typed evidence proxies.
+4. The final score interpolates the original retrieval score with a learned graph correction.
 
-The key question in this draft is: **does region-graph reranking deliver stable top-rank retrieval gains over strong internal baselines under multi-seed evaluation?**
+The goal is not to replace stage-1 retrieval, but to improve the order of the top candidates that matter most for downstream QA. This makes the method easy to deploy in a real system where corpus-wide indexing and repeated encoder passes are expensive.
 
-## 2. Method
+### Contributions
 
-### 2.1 Two-stage architecture
+1. A query-conditioned region graph reranker that extends page-level reranking with region and typed evidence nodes.
+2. A reproducible training protocol for cached multi-vector retrieval embeddings with document-disjoint multi-seed evaluation.
+3. A detailed experimental report showing consistent gains over stage-1 and MLP reranking on early-rank retrieval metrics.
+4. A submission-oriented checklist that identifies the remaining experiments needed for a stronger paper claim.
 
-Given a query `q` and document pages `{p_i}`:
+## 2. Related Work
 
-1. **Stage-1 retrieval (cached):** store query embeddings (`*_q.pt`), page embeddings (`*_p.pt`), stage-1 scores (`*_s0.pt`), and support labels (`*_mask.pt`).
-2. **Stage-2 reranking:** train a lightweight reranker that reorders stage-1 top-k pages.
+This draft should position the method relative to four threads of work:
 
-This draft compares:
+1. **Late-interaction document retrieval**: multi-vector retrievers that score query-page pairs using patch/token-level similarity.
+2. **Graph neural reranking**: rerankers that use graph structure to propagate context among candidate items.
+3. **Evidence-centric document QA**: methods that explicitly model support pages, evidence spans, or evidence graphs.
+4. **Layout-aware multimodal retrieval**: approaches that exploit page layout, region structure, or spatial substructure.
 
-- `ColPali (stage-1)` (stage-1 ranking from cached scores),
-- `ColPali + MLP reranker` (non-graph reranker),
-- `EvidenceGraph-RAG (page+region)` (region graph reranker).
+For the final paper, this section should include formal citations and a careful comparison table. In this draft, the main claim is narrower: a graph built over candidate pages and page regions improves early ranking in a deployable post-retrieval setting.
 
-### 2.2 EvidenceGraph-RAG (page+region)
+## 3. Method
 
-EvidenceGraph-RAG constructs a query-conditioned graph over candidate pages and region partitions, with region-level interactions controlled by:
+### 3.1 Problem formulation
 
-- `grid_rows=2`, `grid_cols=2`,
-- `sem_threshold_region=0.70`,
-- interpolation schedule (`lambda_mix_start=0.15`, `lambda_mix_end=0.55`, `lambda_mix_warmup_steps=1200`).
+Given a query `q` and a document with candidate pages `{p_1, ..., p_K}` retrieved by a stage-1 retriever, the reranker learns a score `s_i` for each page such that support pages are ranked above non-support pages.
 
-The design keeps stage-1 fixed and adds structural reasoning where it matters most (top-k candidate set).
+The input to stage-2 is not raw pages, but cached multi-vector embeddings:
 
-## 3. Experimental Setup
+- `query_embs`: multi-vector embedding of the query
+- `page_embs`: multi-vector embeddings of the top-k candidate pages
+- `stage1_scores`: original retrieval scores from ColPali
+- `support_mask`: binary labels for support pages
 
-### 3.1 Data and split protocol
+The output is a reordered list of the same top-k pages.
 
-- Candidate cache: `cache/mpdoc_val_full`
-- Multi-seed root: `multi_seed_runs/mpdoc_val_disjoint_region_best`
-- Seeds: `[42, 43, 44, 45, 46]`
-- Split constraints: **doc-disjoint** and **question-disjoint**
-- Ratios: **train 12% / val 8% / test 80%**
+### 3.2 Stage-1 cache
 
-Per-seed test size from `split_summary.json`:
+The repository caches stage-1 retrieval outputs in `RerankDataset` samples. Each sample contains:
 
-- seed 42: 3871
-- seed 43: 3793
-- seed 44: 3778
-- seed 45: 3858
-- seed 46: 3882
+- `*_q.pt`: query embeddings
+- `*_p.pt`: page embeddings
+- `*_s0.pt`: stage-1 scores
+- `*_mask.pt`: support labels
+- `meta.json`: question and document metadata
 
-### 3.2 Training and evaluation hyperparameters
+This design is important for reproducibility and efficiency because the expensive encoder pass is not repeated during reranker training.
+
+### 3.3 Evidence graph construction
+
+EvidenceGraph-RAG builds a graph from the top-k candidates. In the current best region setting, the graph contains:
+
+- page nodes
+- region nodes
+- typed evidence nodes
+- a query node
+
+#### Page nodes
+
+Each page embedding is obtained by mean pooling the multi-vector page representation:
+
+`page_vector = mean(page_embs, dim=1)`
+
+This gives a single vector per candidate page for page-level graph reasoning.
+
+#### Region nodes
+
+Each page is split into a fixed `grid_rows × grid_cols` grid over the patch sequence. With the current best setting, `grid_rows = 2` and `grid_cols = 2`, so each page yields 4 region nodes.
+
+Region vectors are computed by mean pooling the patch embeddings that fall inside each grid cell. This is a lightweight proxy for region-level evidence aggregation that preserves spatial locality without requiring a full detector or OCR pipeline.
+
+#### Typed evidence nodes
+
+The implementation also introduces heuristic typed evidence nodes:
+
+- header
+- text block
+- caption
+- table region
+
+These are extracted from fixed bands of the page patch grid. They are not semantic layout annotations from a parser; they are a cheap structural proxy that helps the reranker learn layout-sensitive message passing.
+
+#### Query node
+
+The query node conditions the graph on the user question and provides a global anchor for message passing.
+
+#### Edges
+
+The graph combines several edge types:
+
+1. **Page semantic edges**: connect pages with cosine similarity above a threshold.
+2. **Page adjacency edges**: connect pages with page-distance `<= 1`.
+3. **Page-region edges**: connect each page to its own regions.
+4. **Region-region edges**: connect regions within the same page, with stronger same-row / same-column links.
+5. **Typed-evidence edges**: connect page to typed nodes and connect typed nodes with strong intra-page structure links.
+6. **Cross-page typed edges**: connect same typed evidence across neighboring pages.
+7. **Query edges**: connect the query node to all evidence nodes.
+
+In code, the graph is normalized row-wise after self-loops are added, so each node aggregates a distribution over its neighbors.
+
+### 3.4 Graph encoder
+
+The graph encoder is a compact multi-head GAT:
+
+1. Project input vectors to a hidden space.
+2. Add a learned type embedding for page, region, typed evidence, and query nodes.
+3. Apply stacked dense GAT layers.
+4. Use a residual projection to preserve the original representation.
+
+The implementation is intentionally simple and self-contained, which keeps it easy to inspect and debug.
+
+### 3.5 Page scoring head
+
+After message passing, the model keeps only page-node outputs for the final ranking. The query node representation is paired with each page representation, and a small MLP produces a page-level delta score:
+
+`delta_i = MLP([h_page_i || h_query])`
+
+The final ranking score interpolates the normalized stage-1 score and the learned delta:
+
+`final_i = (1 - lambda) * normalize(s0_i) + lambda * delta_i`
+
+where `lambda = sigmoid(lambda_mix)`.
+
+This interpolation is important because it stabilizes training and prevents the graph model from completely discarding the strong stage-1 prior.
+
+### 3.6 Lambda warmup
+
+`lambda_mix` is not fixed. It is scheduled from `lambda_mix_start` to `lambda_mix_end` over `lambda_mix_warmup_steps`. In the current best run:
+
+- start: `0.15`
+- end: `0.55`
+- warmup: `1200` steps
+
+This schedule lets the model start close to stage-1 behavior and gradually trust the graph correction more as training progresses.
+
+### 3.7 Training objective
+
+The reranker is trained with a mixture of ranking losses:
+
+1. **Listwise softmax loss** over the top-k pages, treating support pages as positives.
+2. **Pairwise margin loss** between positive and negative pages.
+
+The default combination in the trainer is:
+
+`L = 0.7 * L_listwise + 0.3 * L_pairwise`
+
+Optimization uses AdamW, cosine annealing, gradient clipping, and early stopping on validation `Recall@5`.
+
+## 4. Experimental Setup
+
+### 4.1 Data and split protocol
+
+The current paper draft uses the cached MP-DocVQA candidate set:
+
+- `--candidate_cache cache/mpdoc_val_full`
+- multi-seed root: `multi_seed_runs/mpdoc_val_disjoint_region_best`
+- seeds: `42, 43, 44, 45, 46`
+
+The split protocol is document-disjoint. The default split ratios in the multi-seed runner are:
+
+- train: `12%`
+- val: `8%`
+- test: `80%`
+
+This is a hard split at the document level, so candidate pages from the same document do not cross split boundaries.
+
+### 4.2 Hyperparameters for the current best region run
+
+The current best region configuration used:
 
 - `reranker_type=region`
+- `grid_rows=2`
+- `grid_cols=2`
+- `sem_threshold_region=0.70`
+- `cross_page_region_edges=off`
 - `num_epochs=20`
 - `train_batch_size=16`
 - `lr=5e-5`
 - `top_k=20`
 - `eval_k=10`
-- `graph_preset=default`
+- `lambda_mix_start=0.15`
+- `lambda_mix_end=0.55`
+- `lambda_mix_warmup_steps=1200`
 
-### 3.3 Reproducibility command
+The exact command is:
 
 ```bash
 python3 -m experiments.run_phase1_multi_seed \
@@ -92,11 +225,38 @@ python3 -m experiments.run_phase1_multi_seed \
   --eval_dir_name eval
 ```
 
-## 4. Results
+### 4.3 Metrics
 
-Source: `multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_results.json`
+The main retrieval metrics are:
 
-### 4.1 Retrieval metrics (mean ± std across 5 seeds)
+- `Recall@1`
+- `Recall@5`
+- `Recall@10`
+- `MRR@10`
+- `nDCG@10`
+
+The support-page metrics are:
+
+- `Coverage@5`
+- `Coverage@10`
+- `AllSupportHit@10`
+- `SupportF1@10`
+
+### 4.4 Baselines
+
+The current on-disk multi-seed summary reports:
+
+- `ColPali (stage-1)`
+- `ColPali + MLP reranker`
+- `EvidenceGraph-RAG (page+region)`
+
+For the final paper, a page-level GAT baseline (`X-PageRerank`) should also be included under the exact same split family to make the comparison stronger.
+
+## 5. Results
+
+Source: `multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_results_latest.json`
+
+### 5.1 Retrieval metrics
 
 | Method | Recall@1 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |
 | --- | --- | --- | --- | --- | --- |
@@ -104,7 +264,7 @@ Source: `multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_results.json`
 | ColPali + MLP reranker | 0.5371 ± 0.0119 | 0.8843 ± 0.0109 | 1.0000 ± 0.0000 | 0.6871 ± 0.0095 | 0.7624 ± 0.0074 |
 | **EvidenceGraph-RAG (page+region)** | **0.6038 ± 0.0382** | **0.9534 ± 0.0324** | **1.0000 ± 0.0000** | **0.7600 ± 0.0403** | **0.8198 ± 0.0315** |
 
-### 4.2 Support-page metrics (mean ± std across 5 seeds)
+### 5.2 Support-page metrics
 
 | Method | Coverage@5 | Coverage@10 | AllSupportHit@10 | SupportF1@10 |
 | --- | --- | --- | --- | --- |
@@ -112,134 +272,94 @@ Source: `multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_results.json`
 | ColPali + MLP reranker | 0.8843 ± 0.0109 | 1.0000 ± 0.0000 | 0.0000 ± 0.0000 | 0.6102 ± 0.0058 |
 | **EvidenceGraph-RAG (page+region)** | **0.9534 ± 0.0324** | **1.0000 ± 0.0000** | **0.0000 ± 0.0000** | **0.6102 ± 0.0058** |
 
-### 4.3 Delta against `ColPali (stage-1)`
+### 5.3 Main deltas against stage-1
 
-- Recall@1: **+0.0623**
-- Recall@5: **+0.0726**
-- MRR@10: **+0.0701**
-- nDCG@10: **+0.0553**
+- `Recall@1`: `+0.0623`
+- `Recall@5`: `+0.0726`
+- `MRR@10`: `+0.0701`
+- `nDCG@10`: `+0.0553`
 
-### 4.4 Per-seed retrieval for EvidenceGraph-RAG
+### 5.4 Interpretation
 
-| Seed | Recall@1 | Recall@5 | MRR@10 | nDCG@10 |
-| --- | --- | --- | --- | --- |
-| 42 | 0.5670 | 0.9259 | 0.7230 | 0.7909 |
-| 43 | 0.6475 | 0.9837 | 0.8080 | 0.8571 |
-| 44 | 0.6427 | 0.9788 | 0.7974 | 0.8488 |
-| 45 | 0.5814 | 0.9121 | 0.7245 | 0.7914 |
-| 46 | 0.5804 | 0.9668 | 0.7474 | 0.8106 |
+The strongest and most consistent gains are at the top of the ranking. This is the most meaningful region for a downstream QA pipeline, because only the first few pages are typically passed to a reader or answer extractor.
 
-## 5. Discussion
+The support-page metrics show a similar trend: EvidenceGraph-RAG increases the chance that at least one support page appears early in the ranking, but the strict multi-support metric remains limited in this evaluation regime.
 
-### 5.1 Main findings
+## 6. Discussion
 
-1. EvidenceGraph-RAG substantially improves early-rank retrieval metrics, which are most relevant for downstream QA.
-2. Gains are visible against both stage-1-only and non-graph MLP reranking.
-3. The method remains practical because it does not require rebuilding a corpus-level graph index.
+### 6.1 Why the method helps
 
-### 5.2 Metric caveat
+EvidenceGraph-RAG improves retrieval because it can propagate evidence across multiple granularities:
 
-In this cache/evaluation regime, `AllSupportHit@10 = 0.0` for all methods. This indicates that strict multi-support evaluation is not informative under current support-label cardinality; claims should focus on robust early-rank retrieval gains (Recall@1/5, MRR, nDCG), and this limitation must be explicit in submission text.
+1. **Page level** captures coarse document relevance.
+2. **Region level** preserves local visual structure inside a page.
+3. **Typed evidence** injects a simple structural prior for headers, captions, text blocks, and table-like zones.
+4. **Query node** keeps the reranking query-conditioned.
 
-## 6. Threats to Validity
+This combination lets the model correct cases where a support page is semantically close to the query but needs region-level context to be ranked correctly.
 
-1. **Split ratio sensitivity:** Current main run uses 12/8/80; behavior may differ under more train-heavy splits.
-2. **Label structure:** Support cardinality limits strict multi-evidence metrics.
-3. **Baseline scope:** Current comparison is internal (stage-1 and MLP); external baselines are not yet included.
-4. **End-task linkage:** Retrieval gains are not yet connected to final QA answer quality in this draft.
+### 6.2 Why stage-1 interpolation matters
 
-## 7. Reproducibility Checklist
+The learned graph score is not used in isolation. The model blends graph correction with the original stage-1 score. This reduces the risk that the reranker destroys a good retrieval prior, which is especially useful when the top-k candidate list already contains many strong pages.
 
-- [x] Exact seed list and split ratio
-- [x] Exact CLI command
-- [x] Per-seed outputs (`seed_*/eval/phase1_results.json`)
-- [x] Aggregated outputs (`aggregated_results.json`, `aggregated_report.md`)
-- [ ] Environment freeze (`pip freeze`, CUDA, GPU model)
-- [ ] Commit hash snapshot for camera-ready
+### 6.3 What the current metrics do and do not show
 
-## 8. Required Additional Experiments Before A* Submission
+The current results support a claim about **early-rank retrieval quality**. They do not yet support a broader claim about end-to-end answering accuracy, because the repository currently reports retrieval and support-page metrics rather than final answer EM/F1.
 
-### 8.1 Must-run (priority P0)
+That distinction should stay explicit in the paper.
 
-- [ ] **Page-branch family on same seeds/splits**:
-  - `X-PageRerank (GAT)`
-  - `X-PageRerank (ablation: no graph)`
-- [ ] **Significance testing** on Recall@1, Recall@5, MRR@10, nDCG@10 (bootstrap or paired randomization).
-- [ ] **Second split regime** (e.g., 70/15/15) to show robustness beyond 12/8/80.
+### 6.4 Metric caveat
 
-### 8.2 Strongly recommended (priority P1)
+`AllSupportHit@10` remains `0.0` in the current summary. That means the benchmark composition is not yet ideal for strict multi-support claims, so the paper should avoid overemphasizing this metric. The more reliable story is the improvement in `Recall@1`, `Recall@5`, `MRR@10`, and `nDCG@10`.
 
-- [ ] Graph density ablation (`default` vs `sparse-graph`).
-- [ ] Region grid ablation: `(1,1)`, `(2,2)`, `(3,3)`.
-- [ ] Lambda schedule ablation (fixed vs warmup).
-- [ ] Inference efficiency: latency/query and peak memory by method.
+## 7. Limitations
 
-### 8.3 Submission quality boosters (priority P2)
+1. **No end-to-end QA metric yet**: the current repo evidence is retrieval-centric, not answer-centric.
+2. **No final page-GAT comparison in the latest summary**: the paper should include a same-protocol page-level GAT baseline before submission.
+3. **Typed evidence is heuristic**: the typed nodes are simple layout proxies, not parsed semantics.
+4. **The graph is candidate-local**: the method reasons over top-k candidates only, so it cannot recover evidence outside the retrieved set.
+5. **Single-support bias**: strict all-support metrics are not informative under the current data composition.
 
-- [ ] Downstream QA metric linkage (answer EM/F1 or task-specific answer score).
-- [ ] Qualitative win/failure analysis with case studies.
-- [ ] External baseline expansion (if infra allows).
+## 8. What is still needed for a strong submission
 
-### 8.4 One-command multiseed battery + comparison table (P0/P1 runner)
+### 8.1 Must-have
 
-This repo includes a **battery runner** that maps §8.1–§8.2 checks to concrete multi-seed jobs (same seeds as the main paper, default `42–46`) and a **comparison merge** over all `aggregated_results.json` files.
+1. Re-run the page-level GAT baseline under the same split family and report it alongside EvidenceGraph-RAG.
+2. Add statistical significance tests for `Recall@1`, `Recall@5`, `MRR@10`, and `nDCG@10`.
+3. Report the exact environment, GPU, seed, and commit hash used for the final run.
+4. Add a short ablation table for:
+   - region nodes off
+   - typed nodes off
+   - cross-page region edges on/off
+   - lambda schedule fixed vs warmup
 
-**What one battery run includes** (each line is a separate subdirectory under `--battery_root`, with its own doc-disjoint splits and full train/eval):
+### 8.2 Strongly recommended
 
-| Slug | Maps to |
-| --- | --- |
-| `page_gat_default` | X-PageRerank family: **GAT**, **no-graph ablation**, ColPali, MLP (`reranker_type=page`, `graph_preset=default`) |
-| `page_gat_sparse_graph` | Same page family with **`sparse-graph`** preset |
-| `region_main_default` | EvidenceGraph-RAG **region** baseline aligned with §3 (`default` graph, 2×2 grid, λ warmup) |
-| `region_sparse_graph` | Region model + **`sparse-graph`** |
-| `region_grid_1x1` / `region_grid_3x3` | Region **grid ablation** |
-| `region_lambda_fixed_mid` | **λ schedule ablation**: `lambda_mix_start=end=0.35` (flat schedule vs warmup in `region_main_default`) |
-| `region_split_70_15_15` | **Second split regime** `train/val/test = 70/15/15` (same seeds) |
+1. Run a second split regime to test robustness beyond `12/8/80`.
+2. Compare `2x2` and `3x3` region grids.
+3. Measure latency and memory overhead of the reranker.
+4. Add qualitative case studies showing pages before and after reranking.
 
-**Launch (from repo root)** — adjust paths if needed; requires an existing `candidate_cache` (e.g. `cache/mpdoc_val_full`) with `top_k` matching `--top_k`:
+### 8.3 Nice-to-have
 
-```bash
-python3 -m experiments.run_ablation_battery \
-  --candidate_cache cache/mpdoc_val_full \
-  --battery_root multi_seed_runs/paper_ablation_battery \
-  --seeds 42,43,44,45,46 \
-  --num_epochs 20 \
-  --train_batch_size 16 \
-  --lr 5e-5 \
-  --top_k 20 \
-  --eval_k 10
-```
+1. End-to-end QA metrics.
+2. A second benchmark dataset.
+3. Failure taxonomy and calibration analysis.
 
-Useful flags:
+## 9. Suggested Main-Paper Structure
 
-- `--dry_run` — print underlying `run_phase1_multi_seed` commands only.
-- `--skip_completed` — skip a slug if `aggregated_results.json` exists in the slug dir or under `_summaries/{slug}/` (resume after failures).
-- `--only slug1,slug2` — run a subset (e.g. `--only page_gat_default,region_main_default`).
-- **Disk (default):** after each slug, once `aggregated_results.json` exists, all **`seed_*` directories** for that slug are deleted (splits, checkpoints, per-seed eval); only the aggregate JSON/Markdown remain until the next run. Use `--no_prune_seed_dirs` to keep full trees. Use `--archive_slug_then_delete` to copy aggregates to `{battery_root}/_summaries/{slug}/` and remove the entire slug directory (maximum savings; `compare_ablation_aggregates` reads `_summaries` too).
-
-**Merge into a single comparison report** (after all slugs finished):
-
-```bash
-python3 -m experiments.compare_ablation_aggregates \
-  --battery_root multi_seed_runs/paper_ablation_battery
-```
-
-This writes `ablation_comparison.md` and `ablation_comparison.json` under the battery root: primary reranker metrics per experiment, a **GAT vs no-graph** table for page runs, and **ColPali R@1** per split for sanity.
-
-**Still manual for A\* quality**: paired bootstrap / randomization tests (§8.1), latency/memory (§8.2), and P2 items are not generated by the battery.
-
-## 9. Suggested Main-Paper Structure (LaTeX-ready)
-
-1. Introduction  
-2. Related Work  
-3. Method  
-4. Experimental Setup  
-5. Results  
-6. Ablations and Analysis  
-7. Limitations  
-8. Conclusion  
+1. Introduction
+2. Related Work
+3. Method
+4. Experimental Setup
+5. Results
+6. Ablation and Analysis
+7. Limitations
+8. Conclusion
 
 ## 10. Conclusion
 
-This draft establishes a reproducible and practically meaningful result: EvidenceGraph-RAG improves early-rank retrieval quality over strong internal baselines in a 5-seed MP-DocVQA setting. The method is deployment-compatible and stable across seeds, but a submission targeting an A* venue still requires broader baseline coverage, robustness checks, significance analysis, and end-task QA linkage.
+EvidenceGraph-RAG shows that a lightweight region-aware evidence graph can improve early-rank retrieval over a strong cached retriever baseline. The method is practical because it operates only on top-k candidates, preserves the original stage-1 score through interpolation, and adds structure where it matters most: within pages, across neighboring pages, and around typed evidence proxies.
+
+In its current state, the method is already strong enough for a detailed technical paper draft. To make the submission truly convincing, the next priority is not a new architecture, but stronger experimental support: same-protocol GAT comparison, significance testing, ablations, and a downstream QA metric.
 
