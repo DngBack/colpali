@@ -3,6 +3,7 @@ Run Phase 1 disjoint splits + train + eval for multiple RNG seeds, then optional
 
 Per seed *s* (default five seeds: 42–46):
   {root}/seed_{s}/splits/{train,val,test}  — from make_disjoint_splits
+  Default doc split: train 12% / val 8% / test 80% (by unique doc_id).
   {root}/seed_{s}/checkpoints/             — train output (best.pt)
   {root}/seed_{s}/eval/phase1_results.json — eval output
 
@@ -60,9 +61,9 @@ def main() -> None:
     )
     ap.add_argument("--root", default="multi_seed_runs/run", help="Work directory; seed_* subdirs created")
     ap.add_argument("--seeds", default="42,43,44,45,46", help="Comma/space-separated seeds")
-    ap.add_argument("--train_ratio", type=float, default=0.7)
-    ap.add_argument("--val_ratio", type=float, default=0.15)
-    ap.add_argument("--test_ratio", type=float, default=0.15)
+    ap.add_argument("--train_ratio", type=float, default=0.12, help="Fraction of unique doc_ids")
+    ap.add_argument("--val_ratio", type=float, default=0.08, help="Fraction of unique doc_ids (training val)")
+    ap.add_argument("--test_ratio", type=float, default=0.80, help="Fraction of unique doc_ids (held-out test)")
     ap.add_argument("--skip_splits", action="store_true", help="Assume splits already exist under each seed_*")
     ap.add_argument("--skip_train", action="store_true", help="Skip training (reuse checkpoints)")
     ap.add_argument("--skip_eval", action="store_true", help="Skip eval only")

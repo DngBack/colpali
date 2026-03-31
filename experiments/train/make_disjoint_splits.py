@@ -8,6 +8,8 @@ Guarantees:
 Use case:
   Build one large candidate cache from MP-DocVQA "val" rows, then split
   deterministically into train/val/test for reranker experiments.
+
+CLI defaults: train_ratio=0.12, val_ratio=0.08, test_ratio=0.80 (by doc_id).
 """
 
 from __future__ import annotations
@@ -182,9 +184,9 @@ def main() -> None:
     )
     parser.add_argument("--candidate_cache", required=True, help="Source cache with meta.json and *_*.pt files")
     parser.add_argument("--output_root", required=True, help="Output directory containing train/ val/ test/")
-    parser.add_argument("--train_ratio", type=float, default=0.7)
-    parser.add_argument("--val_ratio", type=float, default=0.15)
-    parser.add_argument("--test_ratio", type=float, default=0.15)
+    parser.add_argument("--train_ratio", type=float, default=0.12)
+    parser.add_argument("--val_ratio", type=float, default=0.08)
+    parser.add_argument("--test_ratio", type=float, default=0.80)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
