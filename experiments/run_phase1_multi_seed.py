@@ -67,10 +67,30 @@ def main() -> None:
     ap.add_argument("--skip_train", action="store_true", help="Skip training (reuse checkpoints)")
     ap.add_argument("--skip_eval", action="store_true", help="Skip eval only")
     ap.add_argument("--graph_preset", default="sparse-graph", choices=["default", "sparse-graph"])
+    ap.add_argument(
+        "--reranker_type",
+        default="page",
+        choices=["page", "region"],
+        help="Use page graph reranker (baseline) or region evidence reranker.",
+    )
     ap.add_argument("--num_epochs", type=int, default=10)
     ap.add_argument("--train_batch_size", type=int, default=32)
     ap.add_argument("--top_k", type=int, default=20, help="Must match cache top_k used when building candidate_cache")
     ap.add_argument("--eval_k", type=int, default=10)
+    # Region / quick-win hyperparameters
+    ap.add_argument("--grid_rows", type=int, default=2)
+    ap.add_argument("--grid_cols", type=int, default=2)
+    ap.add_argument("--sem_threshold_region", type=float, default=0.70)
+    ap.add_argument("--cross_page_region_edges", action="store_true")
+    ap.add_argument("--lr", type=float, default=1e-4, help="Training learning rate.")
+    ap.add_argument("--lambda_mix_start", type=float, default=0.20)
+    ap.add_argument("--lambda_mix_end", type=float, default=0.60)
+    ap.add_argument("--lambda_mix_warmup_steps", type=int, default=800)
+    ap.add_argument(
+        "--eval_dir_name",
+        default="eval",
+        help="Per-seed evaluation directory name (default: eval).",
+    )
     ap.add_argument("--dry_run", action="store_true", help="Only print commands")
     ap.add_argument(
         "--no_aggregate",
@@ -104,6 +124,7 @@ def main() -> None:
         test_c = split_root / "test"
         ckpt_dir = sdir / "checkpoints"
         eval_dir = sdir / "eval"
+        eval_dir = sdir / args.eval_dir_name
 
         if not args.skip_splits:
             split_root.mkdir(parents=True, exist_ok=True)
@@ -130,59 +151,83 @@ def main() -> None:
 
         if not args.skip_train:
             ckpt_dir.mkdir(parents=True, exist_ok=True)
-            _run(
-                [
-                    exe,
-                    "-m",
-                    "experiments.run_phase1",
-                    "train",
-                    "--train_cache",
-                    str(train_c.resolve()),
-                    "--val_cache",
-                    str(val_c.resolve()),
-                    "--output_dir",
-                    str(ckpt_dir.resolve()),
-                    "--num_epochs",
-                    str(args.num_epochs),
-                    "--batch_size",
-                    str(args.train_batch_size),
-                    "--top_k",
-                    str(args.top_k),
-                    "--graph_preset",
-                    args.graph_preset,
-                ],
-                args.dry_run,
-            )
+            train_cmd = [
+                exe,
+                "-m",
+                "experiments.run_phase1",
+                "train",
+                "--train_cache",
+                str(train_c.resolve()),
+                "--val_cache",
+                str(val_c.resolve()),
+                "--output_dir",
+                str(ckpt_dir.resolve()),
+                "--num_epochs",
+                str(args.num_epochs),
+                "--batch_size",
+                str(args.train_batch_size),
+                "--lr",
+                str(args.lr),
+                "--top_k",
+                str(args.top_k),
+                "--graph_preset",
+                args.graph_preset,
+                "--reranker_type",
+                args.reranker_type,
+                "--grid_rows",
+                str(args.grid_rows),
+                "--grid_cols",
+                str(args.grid_cols),
+                "--sem_threshold_region",
+                str(args.sem_threshold_region),
+                "--lambda_mix_start",
+                str(args.lambda_mix_start),
+                "--lambda_mix_end",
+                str(args.lambda_mix_end),
+                "--lambda_mix_warmup_steps",
+                str(args.lambda_mix_warmup_steps),
+            ]
+            if args.cross_page_region_edges:
+                train_cmd.append("--cross_page_region_edges")
+            _run(train_cmd, args.dry_run)
 
         if not args.skip_eval:
             eval_dir.mkdir(parents=True, exist_ok=True)
             ckpt_path = ckpt_dir / "best.pt"
             if not args.dry_run and not ckpt_path.is_file():
                 raise FileNotFoundError(f"Missing checkpoint: {ckpt_path} (train or copy weights first)")
-            _run(
-                [
-                    exe,
-                    "-m",
-                    "experiments.run_phase1",
-                    "eval",
-                    "--eval_cache",
-                    str(test_c.resolve()),
-                    "--checkpoint",
-                    str(ckpt_path.resolve()),
-                    "--output_dir",
-                    str(eval_dir.resolve()),
-                    "--k",
-                    str(args.eval_k),
-                    "--graph_preset",
-                    args.graph_preset,
-                ],
-                args.dry_run,
-            )
+            eval_cmd = [
+                exe,
+                "-m",
+                "experiments.run_phase1",
+                "eval",
+                "--eval_cache",
+                str(test_c.resolve()),
+                "--checkpoint",
+                str(ckpt_path.resolve()),
+                "--output_dir",
+                str(eval_dir.resolve()),
+                "--k",
+                str(args.eval_k),
+                "--graph_preset",
+                args.graph_preset,
+                "--reranker_type",
+                args.reranker_type,
+                "--grid_rows",
+                str(args.grid_rows),
+                "--grid_cols",
+                str(args.grid_cols),
+                "--sem_threshold_region",
+                str(args.sem_threshold_region),
+            ]
+            if args.cross_page_region_edges:
+                eval_cmd.append("--cross_page_region_edges")
+            _run(eval_cmd, args.dry_run)
 
     if args.no_aggregate or args.dry_run:
         return
 
-    pattern = str(root / "seed_*" / "eval" / "phase1_results.json")
+    pattern = str(root / "seed_*" / args.eval_dir_name / "phase1_results.json")
     agg_json = root / "aggregated_results.json"
     agg_md = root / "aggregated_report.md"
     _run(

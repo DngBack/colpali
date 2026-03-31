@@ -21,6 +21,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _safe_logit(p: float) -> float:
+    p = min(max(float(p), 1e-4), 1 - 1e-4)
+    return float(torch.log(torch.tensor(p / (1 - p))))
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -185,7 +190,7 @@ class PageGATReranker(nn.Module):
             nn.Linear(cfg.output_dim, 1),
         )
 
-        self.lambda_mix = nn.Parameter(torch.tensor(cfg.lambda_mix))
+        self.lambda_mix = nn.Parameter(torch.tensor(_safe_logit(cfg.lambda_mix), dtype=torch.float))
         self.drop = nn.Dropout(cfg.dropout)
 
     def forward(

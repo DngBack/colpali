@@ -173,4 +173,15 @@ cython_debug/
 *.ipynb
 
 checkpoints/*
+multi_seed_runs/mpdoc_val_disjoint/seed_42/*
+multi_seed_runs/mpdoc_val_disjoint/seed_43/*
+multi_seed_runs/mpdoc_val_disjoint/seed_44/*
+multi_seed_runs/mpdoc_val_disjoint/seed_45/*
+multi_seed_runs/mpdoc_val_disjoint/seed_46/*
+multi_seed_runs/mpdoc_val_disjoint_region_best/seed_42/*
+multi_seed_runs/mpdoc_val_disjoint_region_best/seed_43/*
+multi_seed_runs/mpdoc_val_disjoint_region_best/seed_44/*
+multi_seed_runs/mpdoc_val_disjoint_region_best/seed_45/*
+multi_seed_runs/mpdoc_val_disjoint_region_best/seed_46/*   
+
 cache/*

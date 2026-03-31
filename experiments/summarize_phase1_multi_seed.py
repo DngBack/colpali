@@ -58,7 +58,27 @@ def _stats(values: List[float]) -> Dict[str, float]:
     n = len(values)
     mean = statistics.fmean(values)
     std = statistics.stdev(values) if n > 1 else 0.0
-    return {"mean": mean, "std": std, "min": min(values), "max": max(values), "n": float(n)}
+    vals = sorted(values)
+
+    def pct(p: float) -> float:
+        if len(vals) == 1:
+            return vals[0]
+        pos = (len(vals) - 1) * p
+        lo = int(pos)
+        hi = min(lo + 1, len(vals) - 1)
+        frac = pos - lo
+        return vals[lo] * (1.0 - frac) + vals[hi] * frac
+
+    return {
+        "mean": mean,
+        "std": std,
+        "min": min(values),
+        "max": max(values),
+        "p25": pct(0.25),
+        "p50": pct(0.50),
+        "p75": pct(0.75),
+        "n": float(n),
+    }
 
 
 def aggregate_scalar_blocks(
@@ -202,7 +222,8 @@ def main() -> None:
         with open(p, encoding="utf-8") as f:
             runs.append(json.load(f))
         pth = Path(p)
-        seed_dir = pth.parent.parent.name if pth.parent.name == "eval" else pth.parent.name
+        parent_name = pth.parent.name
+        seed_dir = pth.parent.parent.name if parent_name.startswith("eval") else pth.parent.name
         if seed_dir.startswith("seed_"):
             try:
                 seeds_meta.append(int(seed_dir.split("_", 1)[1]))

@@ -451,7 +451,7 @@ def cmd_train(args):
             num_heads=args.num_heads,
             num_layers=args.num_layers,
             dropout=0.1,
-            lambda_mix=0.5,
+            lambda_mix=args.lambda_mix_start,
         )
         model = PageGATReranker(config=model_cfg)
     else:
@@ -463,8 +463,10 @@ def cmd_train(args):
             output_dim=64,
             num_heads=args.num_heads,
             num_layers=args.num_layers,
+            lambda_mix=args.lambda_mix_start,
             cross_page_region_edges=args.cross_page_region_edges,
             sem_threshold_region=args.sem_threshold_region,
+            include_typed_nodes=True,
         )
         model = RegionGraphReranker(config=model_cfg)
 
@@ -479,6 +481,9 @@ def cmd_train(args):
         top_k=args.top_k,
         sem_threshold=sem_threshold,
         adj_max_gap=adj_max_gap,
+        lambda_mix_start=args.lambda_mix_start,
+        lambda_mix_end=args.lambda_mix_end,
+        lambda_mix_warmup_steps=args.lambda_mix_warmup_steps,
     )
     trainer = RerankerTrainer(model=model, config=train_cfg, graph_config=graph_cfg)
     results = trainer.train(train_ds, val_ds)
@@ -992,6 +997,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_train.add_argument("--sem_threshold", type=float, default=0.65)
     p_train.add_argument("--adj_max_gap", type=int, default=1)
+    p_train.add_argument("--lambda_mix_start", type=float, default=0.20)
+    p_train.add_argument("--lambda_mix_end", type=float, default=0.60)
+    p_train.add_argument("--lambda_mix_warmup_steps", type=int, default=800)
     p_train.add_argument("--grid_rows", type=int, default=2, help="Region grid rows for region reranker.")
     p_train.add_argument("--grid_cols", type=int, default=2, help="Region grid cols for region reranker.")
     p_train.add_argument(

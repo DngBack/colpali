@@ -78,6 +78,11 @@ class TrainingConfig:
     eval_every_n_epochs: int = 1
     eval_k: int = 10
 
+    # Lambda mix schedule (for models with lambda_mix parameter)
+    lambda_mix_start: float = 0.20
+    lambda_mix_end: float = 0.60
+    lambda_mix_warmup_steps: int = 800
+
     # Graph config (passed to EvidenceGraphConfig)
     sem_threshold: float = 0.65
     adj_max_gap: int = 1
@@ -343,6 +348,21 @@ class RerankerTrainer:
         )
         self.best_metric = 0.0
         self.patience_counter = 0
+        self.global_step = 0
+
+    @staticmethod
+    def _safe_logit(p: float) -> float:
+        p = min(max(float(p), 1e-4), 1 - 1e-4)
+        return float(torch.log(torch.tensor(p / (1 - p))))
+
+    def _maybe_update_lambda_mix(self) -> None:
+        if not hasattr(self.model, "lambda_mix"):
+            return
+        warm = max(int(self.config.lambda_mix_warmup_steps), 1)
+        t = min(1.0, float(self.global_step) / float(warm))
+        target = self.config.lambda_mix_start + t * (self.config.lambda_mix_end - self.config.lambda_mix_start)
+        with torch.no_grad():
+            self.model.lambda_mix.data.fill_(self._safe_logit(target))
 
     def _build_graph(self, sample: RerankSample) -> EvidenceGraph:
         """Build an EvidenceGraph for one training sample."""
@@ -390,6 +410,7 @@ class RerankerTrainer:
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}", leave=False)
         for batch in pbar:
             batch_loss = torch.tensor(0.0, device=self.device)
+            self._maybe_update_lambda_mix()
 
             for sample in batch:
                 scores, support = self._forward_one(sample)
@@ -405,6 +426,7 @@ class RerankerTrainer:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
             self.optimizer.step()
             scheduler.step()
+            self.global_step += 1
 
             total_loss += batch_loss.item()
             n_batches += 1
