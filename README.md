@@ -427,17 +427,54 @@ To reproduce the results from the paper, you should checkout to the `v0.1.1` tag
 pip install colpali-engine==0.1.1
 ```
 
-## Phase 1: X-PageRerank (Cache -> Train -> Eval)
+## Phase 1: X-PageRerank & EvidenceGraph-RAG (data → cache → train → eval)
 
-This repo also contains an *experiment pipeline* for a Phase-1 post-retrieval reranker called **X-PageRerank** (GAT-based). The goal is to improve multi-page evidence retrieval by reranking the top-k pages produced by a visual late-interaction retriever (e.g. ColPali).
+This repo contains an *experiment pipeline* for Phase-1 **post-retrieval reranking** on multi-page documents: **X-PageRerank** (page-level GAT graph) and **EvidenceGraph-RAG** (page + spatial regions + typed layout proxies; `--reranker_type region`). Both consume the same cached `RerankDataset` and improve ordering of top-`K` pages from a visual late-interaction retriever (e.g. ColPali).
 
-The Phase-1 pipeline is:
+**End-to-end flow**
 
-1. **Cache** top-K query/page embeddings + stage-1 scores into a `RerankDataset` folder (`cache/.../meta.json`, `*_q.pt`, `*_p.pt`, `*_s0.pt`, `*_mask.pt`).
-2. **Train** a `PageGATReranker` (GAT) using the cached `RerankDataset`.
-3. **Eval** by comparing ranked page predictions against gold *support pages* using IR metrics: `Recall@k`, `MRR@10`, `nDCG@10`.
+| Step | What | Command / module |
+| --- | --- | --- |
+| 0 | **MP-DocVQA** available locally or via Hub | See *0) Dataset* below |
+| 1 | **Cache** embeddings (slow; run once per cache folder) | `python -m experiments.run_phase1 cache ...` |
+| 2 | **Splits** (optional doc-disjoint train/val/test) | `python -m experiments.train.make_disjoint_splits` or `run_phase1_multi_seed` |
+| 3 | **Train** GAT / region reranker | `python -m experiments.run_phase1 train ...` |
+| 4 | **Eval** + metrics | `python -m experiments.run_phase1 eval ...` |
+| 5 | **Multi-seed** aggregation | `python -m experiments.run_phase1_multi_seed` → `summarize_phase1_multi_seed` |
 
-### 1) Cache algorithm (what gets written to `cache/...`)
+### Experiment documentation (`docs/`)
+
+| Doc | Contents |
+| --- | --- |
+| [docs/evidencegraph_rag_region_experiments.md](docs/evidencegraph_rag_region_experiments.md) | EvidenceGraph-RAG (`region`): hyperparameters, cache/train commands, sweep & multi-seed **result tables** |
+| [docs/xpagererank_detailed_paper_multi_seed.md](docs/xpagererank_detailed_paper_multi_seed.md) | X-PageRerank (page GAT): methodology, multi-seed protocol, detailed metrics |
+| [docs/experiment_note_2026-03-30_region_multiseed.md](docs/experiment_note_2026-03-30_region_multiseed.md) | Short note: best region config vs GAT baseline (aggregated artifacts) |
+| [docs/phase1_experiments_report.md](docs/phase1_experiments_report.md) | Earlier Phase 1 reporting |
+| [docs/idea.md](docs/idea.md) | Design notes for the reranking line |
+
+Typical ColPali cache + multi-seed setting: **`vidore/colpali-v1.2`**, **`--top_k 20`**, doc-disjoint splits with seeds **`42–46`**. The **primary** multi-seed command in this repo uses **EvidenceGraph-RAG** (`--reranker_type region`) with **`--graph_preset default`** (see §4A). Some baselines and older notes use **`--graph_preset sparse-graph`** for a sparser page graph; that is an optional variant, not a requirement for the region model.
+
+### 0) Dataset: MP-DocVQA (download / local mirror)
+
+The loader defaults to Hugging Face **`lmms-lab/MP-DocVQA`** (`experiments/data/mpdocvqa_loader.py`). You need network access the first time, or a full local snapshot for **`--offline`** caching.
+
+**Option A — let `datasets` pull the split (online)**
+
+Requires a token if the dataset is gated: set `HUGGING_FACE_HUB_TOKEN` in the environment or in a `.env` file at the repo root (the cache command loads it).
+
+**Option B — download the dataset repo once, then point `--parquet_dir`**
+
+```bash
+# Example: full dataset mirror (adjust cache directory as needed)
+huggingface-cli download lmms-lab/MP-DocVQA --repo-type dataset
+
+# Path to parquet shards (split name on disk is val-*.parquet for the validation split)
+export PARQUET_DIR="$HOME/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/snapshots/<hash>/data/"
+```
+
+Use **`--split validation`** (or `val`) with **`MPDocVQADataset.from_parquet_dir`**: the code normalises `validation` → `val` for parquet file names.
+
+### 1) Cache algorithm (what gets written to `cache/...`) — Step 1 of the pipeline
 
 The caching command is implemented in `experiments/run_phase1.py` under the `cache` sub-command. Conceptually, for each dataset sample (question + document pages):
 
@@ -465,8 +502,8 @@ Per epoch:
 
 1. Load cached samples with `RerankDataset.load()`.
 2. For each query sample:
-   - Build an **evidence graph** on the query-time top-K candidate pages (`build_evidence_graph_from_retrieval`).
-   - Run the GAT reranker (`PageGATReranker`) to predict new reranking scores.
+   - Build an **evidence graph** on the query-time top-K candidate pages: page-only path uses `build_evidence_graph_from_retrieval` + `PageGATReranker`; with `--reranker_type region`, the model is `RegionGraphReranker` (extra region + typed layout nodes; logits still align to the **K pages**).
+   - Run the reranker to predict reranking scores.
 3. Optimize a combination of losses:
    - **Listwise loss** (softmax over candidate scores; positives are the support pages indicated by `support_mask`)
    - **Pairwise margin loss** (hinge-style ranking loss between positive support pages and negative pages, using a margin)
@@ -498,20 +535,101 @@ Metrics:
    - `IDCG@k` uses an ideal ranking with `min(|gold|, k)` ones.
    - `nDCG@k = DCG / IDCG`
 
-### 4) Reproducible commands (offline MP-DocVQA caching)
+### 4) Reproducible commands
 
-Set `PARQUET_DIR` to the directory that contains local parquet shards (HF hub cache or any local export):
+#### A) **Step 1 — Cache (paper-style experiments): ColPali + `top_k=20`**
+
+This matches the setup documented in [docs/evidencegraph_rag_region_experiments.md](docs/evidencegraph_rag_region_experiments.md). Training expects a **single** `RerankDataset` directory (e.g. all labeled `val` rows); doc-disjoint **train/val/test** slices are created later inside each `seed_*` by `run_phase1_multi_seed`.
+
+**Online (Hugging Face loads `lmms-lab/MP-DocVQA`):**
 
 ```bash
-export PARQUET_DIR="~/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/snapshots/<hash>/data/"
+python -m experiments.run_phase1 cache \
+  --split validation \
+  --model_name vidore/colpali-v1.2 \
+  --model_type colpali \
+  --output_dir cache/mpdoc_val_full \
+  --top_k 20 \
+  --batch_size 4
 ```
 
-Because offline mode can miss a labeled `train` split, this pipeline usually builds both train and val from the labeled `val` parquet split.
+**Offline (local parquet mirror — set `<hash>` after `huggingface-cli download`):**
 
-- **Row-only split** (`sample_offset` / `num_samples`): train and val do not share the same *rows*, but they can still share the same **`doc_id`** (different questions on the same PDF).
-- **Document-disjoint val (recommended for GAT):** pass `--exclude_train_doc_ids_cache` when building val. The script **drops candidate rows before encoding** if `doc_id` appears in the train cache, so the model is never validated on embeddings from documents seen during train.
+```bash
+export PARQUET_DIR="${HOME}/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/snapshots/<hash>/data/"
+python -m experiments.run_phase1 cache \
+  --split validation \
+  --offline \
+  --parquet_dir "$PARQUET_DIR" \
+  --model_name vidore/colpali-v1.2 \
+  --model_type colpali \
+  --output_dir cache/mpdoc_val_full \
+  --top_k 20 \
+  --batch_size 4
+```
 
-#### Cache train (example: rows 0..199)
+For **low-RAM** incremental writes, use `--cache_chunk_rows` with `--parquet_dir` and an optional row window (`--num_samples`, `--sample_offset`); see `python -m experiments.run_phase1 cache --help`.
+
+After `cache/mpdoc_val_full` exists and contains `meta.json`, run **multi-seed** train+eval (creates `seed_*/splits`, checkpoints, `seed_*/eval/phase1_results.json`).
+
+**Main command — EvidenceGraph-RAG (`region`)** (page + region + typed nodes; this is the new method, not page-only GAT):
+
+```bash
+python3 -m experiments.run_phase1_multi_seed \
+  --candidate_cache cache/mpdoc_val_full \
+  --root multi_seed_runs/mpdoc_val_disjoint_region_best \
+  --seeds 42,43,44,45,46 \
+  --graph_preset default \
+  --reranker_type region \
+  --num_epochs 20 \
+  --train_batch_size 16 \
+  --lr 5e-5 \
+  --top_k 20 \
+  --eval_k 10 \
+  --grid_rows 2 \
+  --grid_cols 2 \
+  --sem_threshold_region 0.70 \
+  --lambda_mix_start 0.15 \
+  --lambda_mix_end 0.55 \
+  --lambda_mix_warmup_steps 1200 \
+  --eval_dir_name eval
+```
+
+Add `--cross_page_region_edges` if you want cross-page region–region edges (slower). For **X-PageRerank (page GAT only)** on the same cache and seeds:
+
+```bash
+python3 -m experiments.run_phase1_multi_seed \
+  --candidate_cache cache/mpdoc_val_full \
+  --root multi_seed_runs/mpdoc_val_disjoint \
+  --graph_preset sparse-graph \
+  --reranker_type page \
+  --seeds 42,43,44,45,46
+```
+
+(You can also put `--graph_preset sparse-graph` on the **region** run as an ablation; **`default`** is what the command above uses.)
+
+**Aggregate metrics** (adjust `--glob` / paths to match `--root` and `--eval_dir_name`):
+
+```bash
+python3 -m experiments.summarize_phase1_multi_seed \
+  --glob 'multi_seed_runs/mpdoc_val_disjoint_region_best/seed_*/eval/phase1_results.json' \
+  --out_json multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_results.json \
+  --out_md multi_seed_runs/mpdoc_val_disjoint_region_best/aggregated_report.md
+```
+
+#### B) **Lightweight offline slices: ColSmol (smaller GPU / quick tests)**
+
+Set `PARQUET_DIR` to the directory that contains local parquet shards (Hub cache or any local export). Because offline mode can miss a labeled `train` split, this path usually builds both train and val from the labeled **`val`** parquet split.
+
+```bash
+export PARQUET_DIR="${HOME}/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/snapshots/<hash>/data/"
+```
+
+- **Row-only split** (`sample_offset` / `num_samples`): train and val do not share the same *rows*, but they can still share the same **`doc_id`**.
+- **Document-disjoint val (recommended):** pass `--exclude_train_doc_ids_cache` when building val. The script **drops candidate rows before encoding** if `doc_id` appears in the train cache.
+
+**Cache train slice (example: rows 0..199)**
+
 ```bash
 rm -rf cache/real_train_split
 python -m experiments.run_phase1 cache \
@@ -523,7 +641,8 @@ python -m experiments.run_phase1 cache \
   --num_samples 200 --sample_offset 0
 ```
 
-#### Cache val (document-disjoint from train — widen the window so enough rows survive filtering)
+**Cache val (document-disjoint from train — widen the window so enough rows survive filtering)**
+
 ```bash
 rm -rf cache/real_val_doc_disjoint
 python -m experiments.run_phase1 cache \
@@ -538,22 +657,44 @@ python -m experiments.run_phase1 cache \
 
 Check the log line `Doc-disjoint filter: kept X/Y samples`; increase `--num_samples` if `X` is too small.
 
-#### Train GAT reranker
+**Train page GAT reranker**
+
 ```bash
 python -m experiments.run_phase1 train \
   --train_cache cache/real_train_split \
   --val_cache   cache/real_val_doc_disjoint \
   --output_dir  checkpoints/gat_real_split \
-  --num_epochs 10 --batch_size 16 --lr 5e-4
+  --num_epochs 10 --batch_size 16 --lr 5e-4 \
+  --graph_preset sparse-graph \
+  --reranker_type page
 ```
 
-#### Eval on val cache (or replace with your `test` cache)
+**Train EvidenceGraph-RAG (`region`)** — same caches, add region flags (see [docs/evidencegraph_rag_region_experiments.md](docs/evidencegraph_rag_region_experiments.md)):
+
+```bash
+python -m experiments.run_phase1 train \
+  --train_cache cache/real_train_split \
+  --val_cache   cache/real_val_doc_disjoint \
+  --output_dir  checkpoints/region_real_split \
+  --num_epochs 10 --batch_size 32 --lr 1e-4 \
+  --graph_preset sparse-graph \
+  --reranker_type region \
+  --grid_rows 2 --grid_cols 2 \
+  --sem_threshold_region 0.70
+```
+
+**Eval on val cache**
+
 ```bash
 python -m experiments.run_phase1 eval \
   --eval_cache cache/real_val_doc_disjoint \
   --checkpoint checkpoints/gat_real_split/best.pt \
-  --output_dir results/phase1_doc_disjoint_val
+  --output_dir results/phase1_doc_disjoint_val \
+  --graph_preset sparse-graph \
+  --reranker_type page
 ```
+
+For a region checkpoint, pass `--reranker_type region` and the same grid / `--sem_threshold_region` / optional `--cross_page_region_edges` as in training.
 
 ### 5) Strict “no document overlap” test (recommended)
 
@@ -590,6 +731,8 @@ python -m experiments.run_phase1 eval \
 ```
 
 ### 6) Example results from this workspace (Phase 1, row-split val — not document-disjoint)
+
+For **doc-disjoint multi-seed** ColPali runs (X-PageRerank vs EvidenceGraph-RAG), see the tables in [docs/evidencegraph_rag_region_experiments.md](docs/evidencegraph_rag_region_experiments.md) and [docs/xpagererank_detailed_paper_multi_seed.md](docs/xpagererank_detailed_paper_multi_seed.md).
 
 The numbers below used `cache/real_val_split` built with **row offset only** (train and val could share `doc_id`).
 
@@ -642,3 +785,22 @@ Authors: **Manuel Faysse**\*, **Hugues Sibille**\*, **Tony Wu**\*, Bilel Omrani,
       url={https://arxiv.org/abs/2505.17166}, 
 }
 ```
+
+python3 -m experiments.run_phase1_multi_seed \
+  --candidate_cache cache/mpdoc_val_full \
+  --root multi_seed_runs/mpdoc_val_disjoint_region_best \
+  --seeds 42,43,44,45,46 \
+  --graph_preset default \
+  --reranker_type region \
+  --num_epochs 20 \
+  --train_batch_size 16 \
+  --lr 5e-5 \
+  --top_k 20 \
+  --eval_k 10 \
+  --grid_rows 2 \
+  --grid_cols 2 \
+  --sem_threshold_region 0.70 \
+  --lambda_mix_start 0.15 \
+  --lambda_mix_end 0.55 \
+  --lambda_mix_warmup_steps 1200 \
+  --eval_dir_name eval
