@@ -59,6 +59,11 @@ class ColPali(PaliGemmaPreTrainedModel):
     def forward(self, *args, **kwargs) -> torch.Tensor:
         # Delete output_hidden_states from kwargs
         kwargs.pop("output_hidden_states", None)
+        # Transformers 5.x PaliGemmaProcessor can attach `labels` when token_type_ids are returned
+        # (see processing_paligemma.py). That triggers causal LM loss + huge logits — OOM. Retrieval only
+        # needs hidden states, never LM loss.
+        kwargs.pop("labels", None)
+        kwargs.pop("num_items_in_batch", None)
         if "pixel_values" in kwargs:
             kwargs["pixel_values"] = kwargs["pixel_values"].to(dtype=self.dtype)
 

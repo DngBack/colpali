@@ -83,7 +83,12 @@ class DUDEDataset(Dataset):
         max_pages_per_doc: int = 100,
         answerable_only: bool = False,
         cache_dir: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        sample_offset: int = 0,
     ):
+        # jordyvl/DUDE_loader exposes splits: train, val, test (not "validation")
+        if split == "validation":
+            split = "val"
         self.split = split
         self.max_pages_per_doc = max_pages_per_doc
         self.answerable_only = answerable_only
@@ -91,10 +96,14 @@ class DUDEDataset(Dataset):
         if local_json_path is not None:
             self.samples = self._load_from_json(local_json_path)
         else:
-            self.samples = self._load_from_hf(hf_dataset_id or self.HF_DATASET_ID, split, cache_dir)
+            self.samples = self._load_from_hf(hf_dataset_id or self.HF_DATASET_ID, self.split, cache_dir)
 
         if answerable_only:
             self.samples = [s for s in self.samples if s.is_answerable]
+
+        if sample_offset > 0 or num_samples is not None:
+            end = sample_offset + num_samples if num_samples is not None else None
+            self.samples = self.samples[sample_offset:end]
 
         logger.info(
             "DUDE [%s]: %d samples | %d answerable | %d cross-page",
@@ -113,7 +122,39 @@ class DUDEDataset(Dataset):
         except ImportError as e:
             raise ImportError("Install `datasets` via `pip install datasets`") from e
 
-        raw = load_dataset(hf_id, split=split, cache_dir=cache_dir, trust_remote_code=True)
+        # jordyvl/DUDE_loader uses a Hub dataset *script* (no Parquet in-repo).
+        # - datasets 2.x: must pass trust_remote_code=True (non-interactive; avoids [y/N] prompt).
+        # - datasets 3.x: script loaders were removed — pin datasets<3 or use local_json_path.
+        import datasets as datasets_pkg
+
+        major = int(datasets_pkg.__version__.split(".", 1)[0])
+        load_kw: Dict[str, object] = {"cache_dir": cache_dir}
+        if major < 3:
+            load_kw["trust_remote_code"] = True
+
+        try:
+            raw = load_dataset(hf_id, split=split, **load_kw)
+        except ModuleNotFoundError as e:
+            # jordyvl/DUDE_loader imports pdf2image at module load time.
+            missing = getattr(e, "name", None) or ""
+            if "pdf2image" in str(e) or missing == "pdf2image":
+                raise RuntimeError(
+                    "The Hub dataset script for DUDE imports `pdf2image`. Install it:\n"
+                    "  pip install pdf2image\n"
+                    "You also need Poppler on the system (pdf2image calls `pdftoppm`), e.g. on Ubuntu/Debian:\n"
+                    "  sudo apt install poppler-utils\n"
+                    "Or use --local_json_path with pre-rendered page images (see docstring)."
+                ) from e
+            raise
+        except RuntimeError as e:
+            msg = str(e)
+            if "Dataset scripts are no longer supported" in msg or "loading script" in msg.lower():
+                raise RuntimeError(
+                    "This DUDE Hub repo uses a dataset loading script, which requires Hugging Face "
+                    "`datasets` 2.x (v3 dropped script loaders). Fix: pip install 'datasets>=2.19.1,<3' "
+                    "then retry. Alternative: export data to JSON and pass local_json_path (see docstring)."
+                ) from e
+            raise
         return [self._parse_hf_row(row) for row in raw]
 
     def _parse_hf_row(self, row: dict) -> DUDESample:

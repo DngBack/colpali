@@ -7,3 +7,7 @@ from .qwen2_5 import BiQwen2_5, BiQwen2_5_Processor, ColQwen2_5, ColQwen2_5_Proc
 from .qwen3 import BiQwen3, BiQwen3Processor, ColQwen3, ColQwen3Processor
 from .qwen3_5 import BiQwen3_5, BiQwen3_5Processor, ColQwen3_5, ColQwen3_5Processor
 from .qwen_omni import ColQwen2_5Omni, ColQwen2_5OmniProcessor
+
+from ..utils.hf_peft_patches import apply_hf_peft_patches
+
+apply_hf_peft_patches()

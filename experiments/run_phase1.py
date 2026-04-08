@@ -57,12 +57,13 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 # Local imports
+from .data.dude_loader import DUDEDataset
 from .data.mpdocvqa_loader import MPDocVQADataset
 from .retrieval.colpali_infer import ColVisionInferencer, maxsim_score, pool_multivector
 from .graph.build_query_graph import EvidenceGraph, EvidenceGraphConfig, build_evidence_graph_from_retrieval
@@ -148,7 +149,7 @@ def _doc_ids_from_rerank_cache_dir(cache_dir: str) -> set:
     return {str(m["doc_id"]) for m in meta if m.get("doc_id")}
 
 
-def _filter_mpdoc_samples_doc_disjoint(dataset: MPDocVQADataset, banned_doc_ids: set) -> None:
+def _filter_samples_doc_disjoint(dataset: Union[MPDocVQADataset, DUDEDataset], banned_doc_ids: set) -> None:
     """In-place: keep only samples whose doc_id is not in banned_doc_ids."""
     before = len(dataset.samples)
     dataset.samples = [s for s in dataset.samples if str(s.doc_id) not in banned_doc_ids]
@@ -164,6 +165,58 @@ def _filter_mpdoc_samples_doc_disjoint(dataset: MPDocVQADataset, banned_doc_ids:
             "After doc-disjoint filtering, no samples remain. "
             "Widen the val candidate window (--sample_offset / --num_samples)."
         )
+
+
+def _load_rerank_source_dataset(
+    args: argparse.Namespace,
+    hf_token: Optional[str],
+    split_for_parquet: str,
+    parquet_dir: Optional[str],
+    *,
+    num_samples: Optional[int],
+    sample_offset: int,
+) -> Union[MPDocVQADataset, DUDEDataset]:
+    """
+    Load MP-DocVQA (Hub / parquet / JSON) or DUDE (Hub / JSON) for RerankDataset.build_from_index.
+    """
+    name = getattr(args, "dataset", "mpdocvqa")
+    if name == "dude":
+        if parquet_dir:
+            raise ValueError(
+                "DUDE in this repo is loaded from Hugging Face (jordyvl/DUDE_loader) or --local_json_path. "
+                "Do not pass --parquet_dir (that path is for MP-DocVQA parquet shards). "
+                "Export/snapshot DUDE separately if you need offline mode."
+            )
+        hf_id = getattr(args, "hf_dataset_id", None) or DUDEDataset.HF_DATASET_ID
+        return DUDEDataset(
+            split=args.split,
+            hf_dataset_id=hf_id,
+            local_json_path=getattr(args, "local_json_path", None),
+            max_pages_per_doc=args.max_pages,
+            answerable_only=getattr(args, "dude_answerable_only", False),
+            cache_dir=getattr(args, "dude_cache_dir", None),
+            num_samples=num_samples,
+            sample_offset=sample_offset,
+        )
+
+    if parquet_dir:
+        return MPDocVQADataset.from_parquet_dir(
+            parquet_dir=parquet_dir,
+            split_prefix=split_for_parquet,
+            max_pages_per_doc=args.max_pages,
+            num_samples=num_samples,
+            sample_offset=sample_offset,
+        )
+    return MPDocVQADataset(
+        split=args.split,
+        hf_dataset_id=getattr(args, "hf_dataset_id", None),
+        local_json_path=getattr(args, "local_json_path", None),
+        max_pages_per_doc=args.max_pages,
+        hf_token=hf_token,
+        streaming=getattr(args, "streaming", False),
+        num_samples=num_samples,
+        sample_offset=sample_offset,
+    )
 
 
 # ===========================================================================
@@ -210,11 +263,21 @@ def cmd_cache(args):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger.info("=== Phase 1 — Cache embeddings [%s] ===", args.split)
 
-    # Force offline mode if requested
-    if getattr(args, "offline", False):
+    # Offline: full (--offline) blocks Hub for both datasets and Transformers. ColPali checkpoints
+    # (e.g. vidore/colpali-v1.2) are LoRA adapters and also require the base model from Hub cache
+    # (adapter_config base_model_name_or_path, e.g. vidore/colpaligemma-3b-pt-448-base). Use
+    # --offline_datasets_only to force local parquet only while still allowing model download/cache.
+    offline = getattr(args, "offline", False)
+    offline_ds_only = getattr(args, "offline_datasets_only", False)
+    if offline and offline_ds_only:
+        raise ValueError("Use either --offline or --offline_datasets_only, not both.")
+    if offline_ds_only:
+        os.environ["HF_DATASETS_OFFLINE"] = "1"
+        logger.info("HF_DATASETS_OFFLINE only (parquet/HF datasets); Transformers may still reach Hub for models")
+    elif offline:
         os.environ["HF_DATASETS_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        logger.info("Offline mode enabled")
+        logger.info("Offline mode enabled (datasets + transformers)")
 
     # Resolve HF token: CLI arg > env var > .env file
     hf_token = getattr(args, "hf_token", None) or os.environ.get("HUGGING_FACE_HUB_TOKEN")
@@ -318,28 +381,17 @@ def cmd_cache(args):
                 n_chunk,
             )
 
-            if parquet_dir:
-                dataset = MPDocVQADataset.from_parquet_dir(
-                    parquet_dir=parquet_dir,
-                    split_prefix=split_for_parquet,
-                    max_pages_per_doc=args.max_pages,
-                    num_samples=n_chunk,
-                    sample_offset=abs_offset,
-                )
-            else:
-                dataset = MPDocVQADataset(
-                    split=args.split,
-                    hf_dataset_id=getattr(args, "hf_dataset_id", None),
-                    local_json_path=getattr(args, "local_json_path", None),
-                    max_pages_per_doc=args.max_pages,
-                    hf_token=hf_token,
-                    streaming=False,
-                    num_samples=n_chunk,
-                    sample_offset=abs_offset,
-                )
+            dataset = _load_rerank_source_dataset(
+                args,
+                hf_token,
+                split_for_parquet,
+                parquet_dir,
+                num_samples=n_chunk,
+                sample_offset=abs_offset,
+            )
 
             if banned is not None:
-                _filter_mpdoc_samples_doc_disjoint(dataset, banned)
+                _filter_samples_doc_disjoint(dataset, banned)
 
             rerank_ds = RerankDataset.build_from_index(
                 dataset=dataset,
@@ -368,28 +420,17 @@ def cmd_cache(args):
         )
         return
 
-    if parquet_dir:
-        dataset = MPDocVQADataset.from_parquet_dir(
-            parquet_dir=parquet_dir,
-            split_prefix=split_for_parquet,
-            max_pages_per_doc=args.max_pages,
-            num_samples=num_samples,
-            sample_offset=sample_offset,
-        )
-    else:
-        dataset = MPDocVQADataset(
-            split=args.split,
-            hf_dataset_id=getattr(args, "hf_dataset_id", None),
-            local_json_path=getattr(args, "local_json_path", None),
-            max_pages_per_doc=args.max_pages,
-            hf_token=hf_token,
-            streaming=streaming,
-            num_samples=num_samples,
-            sample_offset=sample_offset,
-        )
+    dataset = _load_rerank_source_dataset(
+        args,
+        hf_token,
+        split_for_parquet,
+        parquet_dir,
+        num_samples=num_samples,
+        sample_offset=sample_offset,
+    )
 
     if banned is not None:
-        _filter_mpdoc_samples_doc_disjoint(dataset, banned)
+        _filter_samples_doc_disjoint(dataset, banned)
 
     dataset.print_stats()
 
@@ -934,8 +975,24 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     # Dataset source options
+    p_cache.add_argument(
+        "--dataset",
+        choices=["mpdocvqa", "dude"],
+        default="mpdocvqa",
+        help="Benchmark to cache: MP-DocVQA (default) or DUDE (Hub: jordyvl/DUDE_loader unless --hf_dataset_id).",
+    )
     p_cache.add_argument("--hf_dataset_id", default=None,
-                         help="HuggingFace dataset ID (default: lmms-lab/MP-DocVQA)")
+                         help="HF dataset ID (MP-DocVQA default: lmms-lab/MP-DocVQA; DUDE default: jordyvl/DUDE_loader).")
+    p_cache.add_argument(
+        "--dude_answerable_only",
+        action="store_true",
+        help="For --dataset dude: keep only answerable questions (recommended for reranking caches).",
+    )
+    p_cache.add_argument(
+        "--dude_cache_dir",
+        default=None,
+        help="Optional HuggingFace `datasets` cache_dir when loading DUDE from the Hub.",
+    )
     p_cache.add_argument("--hf_token", default=None,
                          help="HuggingFace token for gated datasets "
                               "(or set env var HUGGING_FACE_HUB_TOKEN)")
@@ -953,8 +1010,16 @@ def build_parser() -> argparse.ArgumentParser:
                               "Example: ~/.cache/huggingface/hub/datasets--lmms-lab--MP-DocVQA/"
                               "snapshots/<hash>/data/")
     p_cache.add_argument("--offline", action="store_true",
-                         help="Force offline mode (HF_DATASETS_OFFLINE=1 + TRANSFORMERS_OFFLINE=1). "
-                              "Use when network is unavailable and data is already cached.")
+                         help="HF_DATASETS_OFFLINE=1 + TRANSFORMERS_OFFLINE=1. Requires full local Hub "
+                              "cache for the retriever: for ColPali v1.2 you need both the adapter "
+                              "(vidore/colpali-v1.2) and its base (vidore/colpaligemma-3b-pt-448-base). "
+                              "Cannot download missing weights while this flag is set.")
+    p_cache.add_argument(
+        "--offline_datasets_only",
+        action="store_true",
+        help="HF_DATASETS_OFFLINE=1 only. Use with --parquet_dir so MP-DocVQA is read locally, while "
+             "Transformers can still download/cache model files on first run.",
+    )
     p_cache.add_argument(
         "--exclude_train_doc_ids_cache",
         default=None,

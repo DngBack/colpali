@@ -14,7 +14,12 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from colpali_engine.utils.hf_peft_patches import apply_hf_peft_patches
+
 logger = logging.getLogger(__name__)
+
+# Ensures Transformers 5.5+ PEFT fixes apply even if this module is imported without colpali_engine.models.
+apply_hf_peft_patches()
 
 # ---------------------------------------------------------------------------
 # Padding utility (sequence length may vary across batches)
@@ -200,13 +205,22 @@ class ColVisionInferencer:
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.torch_dtype = torch_dtype
 
+        apply_hf_peft_patches()
         ModelCls, ProcessorCls = _import_model_and_processor(model_type)
 
         logger.info("Loading %s from '%s' …", model_type, model_name_or_path)
+        # Transformers 5.x may leave some params on "meta" until a device_map load; calling .to(cuda)
+        # then raises "Cannot copy out of meta tensor". Loading with device_map materializes weights
+        # on the target device in one step.
+        if self.device.type == "cuda":
+            device_map_arg: Union[str, dict] = f"cuda:{self.device.index}" if self.device.index is not None else "cuda:0"
+        else:
+            device_map_arg = "cpu"
         self.model = ModelCls.from_pretrained(
             model_name_or_path,
             torch_dtype=torch_dtype,
-        ).to(self.device).eval()
+            device_map=device_map_arg,
+        ).eval()
 
         self.processor = ProcessorCls.from_pretrained(model_name_or_path)
         logger.info("Model loaded on %s", self.device)
